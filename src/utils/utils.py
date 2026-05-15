@@ -120,8 +120,33 @@ def expand_to_batch_dim(tensor, batch_size):
     return tensor.unsqueeze(0).expand(batch_size, *tensor.shape)
 
 # legacy code, preserve
-from torchvision.io import read_video
+# torchvision.io.read_video is dropped from torchvision CUDA wheels (0.20+),
+# so we provide an av-based replacement with the same (video, audio, info) return shape.
 import av
+
+
+def read_video(video_path, pts_unit="sec", start_pts=None, end_pts=None):
+    frames = []
+    fps = 0.0
+    with av.open(str(video_path)) as container:
+        stream = container.streams.video[0]
+        if stream.average_rate:
+            fps = float(stream.average_rate)
+        time_base = float(stream.time_base) if stream.time_base else 0.0
+        for frame in container.decode(stream):
+            if start_pts is not None and pts_unit == "sec" and time_base:
+                t = float(frame.pts) * time_base if frame.pts is not None else 0.0
+                if t < start_pts:
+                    continue
+            if end_pts is not None and pts_unit == "sec" and time_base:
+                t = float(frame.pts) * time_base if frame.pts is not None else 0.0
+                if t > end_pts:
+                    break
+            frames.append(frame.to_ndarray(format="rgb24"))
+    if not frames:
+        return torch.empty(0, dtype=torch.uint8), torch.empty(0), {"video_fps": fps}
+    video = torch.from_numpy(np.stack(frames))
+    return video, torch.empty(0), {"video_fps": fps}
 
 def load_sample_video(video_path, mark_time, total_time, max_time = None) -> torch.Tensor:
     video_length = total_time - mark_time
