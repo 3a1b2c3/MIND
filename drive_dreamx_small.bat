@@ -1,12 +1,16 @@
 @echo off
-:: Stage DreamX-World videos into MIND-tests\dreamx-world\ and auto-score with run_mind.bat.
+:: Stage DreamX-World videos into MIND-tests\dreamx-world_small\ for run_mind.bat scoring.
+::
+:: Identical to drive_dreamx.bat except --model-name is `dreamx-world_small`, so
+:: the staged videos land under a separate test-root subdir and don't collide
+:: with the full-resolution `dreamx-world` set.
 ::
 :: Usage:
-::   drive_dreamx.bat                            stage all samples then score
-::   drive_dreamx.bat --dry-run                  preview commands without running inference
-::   drive_dreamx.bat --limit 5                  first 5 samples only
-::   drive_dreamx.bat --perspective 1st_data     limit to first-person
-::   drive_dreamx.bat --test-type mem_test       limit to memory tests
+::   drive_dreamx_small.bat                            stage all samples
+::   drive_dreamx_small.bat --dry-run                  preview commands without running inference
+::   drive_dreamx_small.bat --limit 5                  first 5 samples only
+::   drive_dreamx_small.bat --perspective 1st_data     limit to first-person
+::   drive_dreamx_small.bat --test-type mem_test       limit to memory tests
 ::
 :: All flags pass through to src\drive_dreamx.py.
 
@@ -19,8 +23,8 @@ set PYTHONUNBUFFERED=1
 set PY=%~dp0.venv\Scripts\python.exe
 set GT_ROOT=C:\workspace\world\MIND-Data
 set MIND_TESTS=C:\workspace\world\MIND-tests
-set MODEL_NAME=dreamx-world
-set LOG=%~dp0drive_dreamx.log
+set MODEL_NAME=dreamx-world_small
+set LOG=%~dp0drive_dreamx_small.log
 
 if not exist "%PY%" (
     echo ERROR: venv python not found: %PY%
@@ -32,7 +36,7 @@ if not exist "%GT_ROOT%" (
 )
 
 echo ============================================================
-echo DreamX-World staging into MIND-tests
+echo DreamX-World staging into MIND-tests (small)
 echo ============================================================
 echo   gt_root   : %GT_ROOT%
 echo   test_root : %MIND_TESTS%

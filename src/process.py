@@ -224,12 +224,21 @@ def compute_metrics(gt_root, test_root, dino_path, output_path, requested_metric
             if test_type == 'mirror_test':
                 if 'gsc' in requested_metrics:
                     test_dir = os.path.join(test_root, perspective, test_type)
+                    # Drivers that don't yet produce mirror_test (e.g. drive_dreamx,
+                    # drive_matrix3) leave this subdir absent. Skip instead of crashing
+                    # so the other metrics can still score against what IS present.
+                    if not os.path.isdir(test_dir):
+                        tqdm.write(f"[skip] {perspective}/{test_type}: test_dir missing ({test_dir})")
+                        continue
                     all_data += [{'path': d, 'perspective': perspective, 'test_type': test_type }
                         for d in os.listdir(test_dir)]
             else:
                 if 'lcm' in requested_metrics or 'visual' in requested_metrics or 'dino' in requested_metrics or 'action' in requested_metrics:
                     gt_dir = os.path.join(gt_root, perspective, 'test', test_type)
                     test_dir = os.path.join(test_root, perspective, test_type)
+                    if not os.path.isdir(test_dir):
+                        tqdm.write(f"[skip] {perspective}/{test_type}: test_dir missing ({test_dir})")
+                        continue
 
                     all_data += [{'path': d, 'perspective': perspective, 'test_type': test_type}
                         for d in os.listdir(test_dir) if os.path.exists(os.path.join(gt_dir, d))]

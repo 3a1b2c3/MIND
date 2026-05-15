@@ -29,7 +29,16 @@ if not defined TEST_SUBDIR set TEST_SUBDIR=matrix-game-3
 if not defined METRICS set METRICS=lcm,visual,dino,action,gsc
 if not defined NUM_GPUS set NUM_GPUS=1
 
-set TEST_ROOT=%MIND_TESTS%\%TEST_SUBDIR%
+:: Accept either a bare subdir name (resolved under MIND_TESTS) or an absolute
+:: path. Detection: an absolute path contains ":\" or starts with "\\" (UNC).
+:: This lets you tab-complete MIND-tests\dreamx-world_small in the shell without
+:: tripping the prefix-prepend below.
+echo %TEST_SUBDIR% | findstr /R /C:":\\" /C:"^\\\\" >nul
+if errorlevel 1 (
+    set TEST_ROOT=%MIND_TESTS%\%TEST_SUBDIR%
+) else (
+    set TEST_ROOT=%TEST_SUBDIR%
+)
 
 if not exist "%PY%" (
     echo ERROR: venv python not found: %PY%

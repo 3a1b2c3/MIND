@@ -125,6 +125,14 @@ def run_one(sample: dict, test_root: Path, model_name: str, work_dir: Path, dry_
         return 0
 
     env = os.environ.copy()
+    # Strip cross-venv pollution before spawning the Matrix-Game-3 venv python.
+    # The MIND venv (uv-managed 3.10) leaks VIRTUAL_ENV / PYTHONHOME / PYTHONPATH
+    # into the subprocess; the Matrix-Game-3 interpreter then loads the host's
+    # 3.10 stdlib, _sre.MAGIC mismatches the in-process MAGIC, and `import re`
+    # crashes with `AssertionError: SRE module mismatch` before any user code runs.
+    for k in ("PYTHONHOME", "PYTHONPATH", "PYTHONSTARTUP", "PYTHONNOUSERSITE",
+              "VIRTUAL_ENV", "VIRTUAL_ENV_PROMPT", "UV_PYTHON", "UV_PROJECT_ENVIRONMENT"):
+        env.pop(k, None)
     env["PYTHONIOENCODING"] = "utf-8"
 
     t0 = time.perf_counter()
