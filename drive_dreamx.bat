@@ -14,10 +14,12 @@ setlocal enableextensions
 
 cd /d "%~dp0"
 set PYTHONIOENCODING=utf-8
+set PYTHONUNBUFFERED=1
 
 set PY=%~dp0.venv\Scripts\python.exe
 set GT_ROOT=C:\workspace\world\MIND-Data
 set MIND_TESTS=C:\workspace\world\MIND-tests
+set LOG=%~dp0drive_dreamx.log
 
 if not exist "%PY%" (
     echo ERROR: venv python not found: %PY%
@@ -34,9 +36,10 @@ echo ============================================================
 echo   gt_root   : %GT_ROOT%
 echo   test_root : %MIND_TESTS%
 echo   model     : dreamx-world
+echo   log       : %LOG%
 echo ============================================================
 
-"%PY%" src\drive_dreamx.py --gt-root "%GT_ROOT%" --test-root "%MIND_TESTS%" %*
+powershell -NoProfile -Command "& '%PY%' src\drive_dreamx.py --gt-root '%GT_ROOT%' --test-root '%MIND_TESTS%' %* 2>&1 | ForEach-Object { $l = '{0:HH:mm:ss} {1}' -f (Get-Date), $_; Write-Host $l; $l } | Out-File -FilePath '%LOG%' -Encoding utf8; exit $LASTEXITCODE"
 
 set EXIT_CODE=%ERRORLEVEL%
 if %EXIT_CODE%==0 (
