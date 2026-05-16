@@ -203,7 +203,12 @@ def compute_metrics_single_gpu(task_queue, result_list, gt_root, test_root, dino
                     stop_event.set()
                 raise
             except Exception as e:
+                import traceback as _tb
+                # Keep the full traceback in the result JSON so failures aren't
+                # cryptic one-liners. tqdm.write only the summary to keep the
+                # console readable.
                 result['error'] = str(e)
+                result['traceback'] = _tb.format_exc()
                 if retry_count < 3:
                     tqdm.write(f"{prefix}: Error processing {data_path} on GPU{gpu_id}: {e}, retrying ({retry_count + 1}/3)")
                     task_queue.put(Task(data, retry_count + 1))
