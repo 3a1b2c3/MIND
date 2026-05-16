@@ -44,7 +44,9 @@ echo   model     : %MODEL_NAME%
 echo   log       : %LOG%
 echo ============================================================
 
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0run_dreamx.ps1" "%LOG%" "%PY%" "src\drive_dreamx.py" "--gt-root" "%GT_ROOT%" "--test-root" "%MIND_TESTS%" "--model-name" "%MODEL_NAME%" %*
+:: Speed bundle: half-resolution, 30 steps, 81 frames @ 16fps (still 5s output),
+:: fp8 transformer weights. ~4-5x faster than the full-res defaults.
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0run_dreamx.ps1" "%LOG%" "%PY%" "src\drive_dreamx.py" "--gt-root" "%GT_ROOT%" "--test-root" "%MIND_TESTS%" "--model-name" "%MODEL_NAME%" "--height" "352" "--width" "640" "--video-length" "81" "--fps" "16" "--steps" "30" "--gpu-memory-mode" "model_full_load_and_qfloat8" %*
 
 set EXIT_CODE=%ERRORLEVEL%
 if not %EXIT_CODE%==0 (

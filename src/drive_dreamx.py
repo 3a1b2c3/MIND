@@ -37,24 +37,18 @@ DREAMX_TRANSFORMER = DREAMX_REPO / "DreamX-World-5B-Cam"
 TEST_TYPES = ("action_space_test", "mem_test")
 PERSPECTIVES = ("1st_data", "3rd_data")
 
-# Speed-tuned defaults. 5-second output kept at 16fps (81 frames) instead of
-# 24fps (121 frames): MIND scoring cares about temporal alignment, not output
-# fps, and 81 frames is ~33% less denoising work per sample. 30 steps matches
-# DreamX's own inference_README "fast preset" and shaves another ~1.7x off vs
-# 50 steps with minimal visible quality drop on this workload. Resolution stays
-# at 704x1280 so PSNR/LPIPS/FVD compare apples-to-apples against MIND GT.
-VIDEO_LENGTH = 81
-HEIGHT = 352
-WIDTH = 640
-FPS = 16
-STEPS = 30
+# Full-resolution DreamX-World-5B-Cam defaults (matches inference_README.md).
+# All six knobs below are CLI-overridable so a fast / smaller preset can be
+# layered on top from the wrapper bat (drive_dreamx_small.bat passes the fp8
+# + half-res + 30-step bundle as flags, leaving these untouched).
+VIDEO_LENGTH = 121
+HEIGHT = 704
+WIDTH = 1280
+FPS = 24
+STEPS = 50
 GUIDANCE = 3.0
 SEED = 42
-# fp8 weight cast for the transformer + on-device compute. ~1.5-2x speedup on
-# Ada/Blackwell with no measurable quality loss on this workload (the cast is
-# done once at load time, not per-step). model_full_load = no CPU offload, so
-# requires the full transformer to fit in VRAM (~14 GB after fp8 vs ~28 GB bf16).
-GPU_MEMORY_MODE = "model_full_load_and_qfloat8"
+GPU_MEMORY_MODE = "none"  # "none", "model_full_load_and_qfloat8", "model_cpu_offload_and_qfloat8", "sequential_cpu_offload"
 
 
 def extract_first_frame(video_path: Path, out_path: Path) -> None:
@@ -166,6 +160,13 @@ def main() -> int:
     parser.add_argument("--test-type",   choices=TEST_TYPES, help="Limit to one test type")
     parser.add_argument("--limit",       type=int, help="Only run first N matched samples")
     parser.add_argument("--dry-run",     action="store_true")
+    # Quality / speed overrides. Defaults match full-resolution DreamX-World-5B-Cam.
+    parser.add_argument("--height",         type=int, default=HEIGHT, help=f"Output height (default {HEIGHT})")
+    parser.add_argument("--width",          type=int, default=WIDTH,  help=f"Output width (default {WIDTH})")
+    parser.add_argument("--video-length",   type=int, default=VIDEO_LENGTH, help=f"Frames per clip (1+4k pattern; default {VIDEO_LENGTH})")
+    parser.add_argument("--fps",            type=int, default=FPS, help=f"Output fps; 24 or 16 (default {FPS})")
+    parser.add_argument("--steps",          type=int, default=STEPS, help=f"Denoising steps (default {STEPS})")
+    parser.add_argument("--gpu-memory-mode", default=GPU_MEMORY_MODE, help=f"DreamX --GPU_memory_mode; 'none' to skip (default {GPU_MEMORY_MODE})")
     args = parser.parse_args()
 
     if not DREAMX_INFER.exists():
@@ -250,17 +251,20 @@ def main() -> int:
         "--output_dir",          str(batch_output_dir),
         "--cam_method",          "prope",
         "--add_control_adapter",
-        "--sample_size",         str(HEIGHT), str(WIDTH),
-        "--video_length",        str(VIDEO_LENGTH),
-        "--fps",                 str(FPS),
+        "--sample_size",         str(args.height), str(args.width),
+        "--video_length",        str(args.video_length),
+        "--fps",                 str(args.fps),
         "--guidance_scale",      str(GUIDANCE),
-        "--num_inference_steps", str(STEPS),
+        "--num_inference_steps", str(args.steps),
         "--seed",                str(SEED),
         "--weight_dtype",        "bfloat16",
         "--ulysses_degree",      "1",
         "--ring_degree",         "1",
-        "--GPU_memory_mode",     GPU_MEMORY_MODE,
     ]
+    # DreamX treats absence of --GPU_memory_mode as "no offload, full bf16 load".
+    # Only append the flag when the wrapper actually wants a non-default mode.
+    if args.gpu_memory_mode and args.gpu_memory_mode.lower() != "none":
+        cmd += ["--GPU_memory_mode", args.gpu_memory_mode]
     print("Inference cmd:\n  " + " ".join(cmd) + "\n")
 
     if args.dry_run:

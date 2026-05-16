@@ -8,9 +8,28 @@ import json
 from tqdm import tqdm
 import numpy as np
 import cv2
+import shutil
 import subprocess
 from pathlib import Path
 import hashlib
+
+
+def _resolve_ffmpeg() -> str:
+    """Locate an ffmpeg binary. Prefer PATH; fall back to the imageio-ffmpeg
+    bundled binary so Windows installs without a system ffmpeg still work."""
+    found = shutil.which("ffmpeg")
+    if found:
+        return found
+    try:
+        import imageio_ffmpeg
+        return imageio_ffmpeg.get_ffmpeg_exe()
+    except Exception:
+        # Last resort — let subprocess.run surface WinError 2 with a clearer
+        # message than the original "[WinError 2] ..." we've been chasing.
+        return "ffmpeg"
+
+
+_FFMPEG = _resolve_ffmpeg()
 from torchvision.transforms import Compose, Resize, CenterCrop, ToTensor, Normalize, ToPILImage
 try:
     from torchvision.transforms import InterpolationMode
@@ -313,14 +332,14 @@ def crop_video_frames(video_path, max_frames, cache_dir, start_frame=0):
     
     if start_frame == 0:
         cmd = [
-            "ffmpeg", "-i", str(video_path),
+            _FFMPEG, "-i", str(video_path),
             "-vframes", str(max_frames),
             "-c:v", "libx264", "-crf", "18",
             "-y", str(cache_path)
         ]
     else:
         cmd = [
-            "ffmpeg",
+            _FFMPEG,
             "-i", str(video_path),
             "-vf", f"select=gte(n\,{start_frame})",  # 从指定帧开始
             "-vframes", str(max_frames),
