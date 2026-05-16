@@ -1,8 +1,37 @@
+import os, sys
+print(f"[VIPE_UTILS_DEBUG_v3] loading from {__file__} | pid={os.getpid()} | sys.path[0]={sys.path[0] if sys.path else '?'}", file=sys.stderr, flush=True)
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 import hashlib
+import shutil
 import subprocess
+
+
+def _resolve_vipe_cli() -> str:
+    """Locate the ViPE CLI. Prefer PATH; fall back to known checkout location.
+    build_vipe.bat installs ViPE editable into the DeepVerse venv (not the MIND
+    venv), so when process.py runs from the MIND venv the bare `vipe` is not on
+    PATH and subprocess.run(["vipe", ...]) raises WinError 2.
+
+    Function-scope imports guard against multiprocessing-spawn issues where a
+    worker re-imports a stale or partial vipe_utils module: even if module-level
+    state is weird, `os` and `shutil` are imported fresh here every call."""
+    import os as _os
+    import shutil as _shutil
+    found = _shutil.which("vipe")
+    if found:
+        return found
+    candidates = [
+        r"C:\workspace\world\DeepVerse\.venv\Scripts\vipe.exe",
+    ]
+    for c in candidates:
+        if _os.path.exists(c):
+            return c
+    return "vipe"  # let subprocess surface the original error
+
+
+_VIPE_CLI = _resolve_vipe_cli()
 import numpy as np
 import os
 from tqdm import tqdm
@@ -243,7 +272,7 @@ def extract_traj(video: Path, cache_dir: Path, pipeline: str = "default", gt_cac
     out_dir = cache_dir / "vipe" / key
     out_dir.mkdir(parents=True, exist_ok=True)
     tqdm.write(f"{verbose_prefix}  Running ViPE inference: {video.name} -> {out_dir.name}...")
-    run_cmd(["vipe", "infer", str(video), "--output", str(out_dir), "--pipeline", pipeline],
+    run_cmd([_VIPE_CLI, "infer", str(video), "--output", str(out_dir), "--pipeline", pipeline],
             quiet=True, env={"CUDA_VISIBLE_DEVICES": str(gpu_id)})
 
     tqdm.write(f"{verbose_prefix}  Converting to COLMAP format...")

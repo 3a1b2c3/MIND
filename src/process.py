@@ -213,8 +213,30 @@ def compute_metrics_single_gpu(task_queue, result_list, gt_root, test_root, dino
         torch.cuda.empty_cache()
 
 def compute_metrics(gt_root, test_root, dino_path, output_path, requested_metrics=['lcm', 'visual', 'dino', 'action'],
-                   video_max_time=100, process_batch_size=10, num_gpus=1):
+                   video_max_time=100, process_batch_size=10, num_gpus=1, resume_path=None):
     result_dict = {'data':[], 'video_max_time':video_max_time}
+
+    # Load prior results (if --resume): seed result_dict and build skip-set so
+    # samples we already scored aren't recomputed.
+    resumed_results = []
+    resume_keys = set()
+    if resume_path and os.path.exists(resume_path):
+        try:
+            with open(resume_path, 'r', encoding='utf-8') as f:
+                prev = json.load(f)
+            for entry in prev.get('data', []):
+                # An entry is "complete" if it has no top-level error AND at least one
+                # of the requested metric keys is present. Re-score anything we never
+                # finished cleanly.
+                if entry.get('error'):
+                    continue
+                resumed_results.append(entry)
+                resume_keys.add((entry.get('perspective'), entry.get('test_type'), entry.get('path')))
+            tqdm.write(f"[resume] loaded {len(resumed_results)} prior result(s) from {resume_path}")
+        except Exception as exc:
+            tqdm.write(f"[resume] WARNING: failed to load {resume_path}: {exc}; scoring from scratch")
+            resumed_results = []
+            resume_keys = set()
 
     mp.set_start_method('spawn', force=True)
 
@@ -231,7 +253,7 @@ def compute_metrics(gt_root, test_root, dino_path, output_path, requested_metric
                         tqdm.write(f"[skip] {perspective}/{test_type}: test_dir missing ({test_dir})")
                         continue
                     all_data += [{'path': d, 'perspective': perspective, 'test_type': test_type }
-                        for d in os.listdir(test_dir)]
+                        for d in os.listdir(test_dir) if (perspective, test_type, d) not in resume_keys]
             else:
                 if 'lcm' in requested_metrics or 'visual' in requested_metrics or 'dino' in requested_metrics or 'action' in requested_metrics:
                     gt_dir = os.path.join(gt_root, perspective, 'test', test_type)
@@ -241,7 +263,13 @@ def compute_metrics(gt_root, test_root, dino_path, output_path, requested_metric
                         continue
 
                     all_data += [{'path': d, 'perspective': perspective, 'test_type': test_type}
-                        for d in os.listdir(test_dir) if os.path.exists(os.path.join(gt_dir, d))]
+                        for d in os.listdir(test_dir)
+                        if os.path.exists(os.path.join(gt_dir, d))
+                        and os.path.exists(os.path.join(test_dir, d, 'video.mp4'))
+                        and (perspective, test_type, d) not in resume_keys]
+
+    if resume_keys:
+        tqdm.write(f"[resume] skipping {len(resume_keys)} already-scored sample(s); {len(all_data)} to score")
 
     if len(all_data) == 0:
         tqdm.write(f"No data found!")
@@ -257,6 +285,9 @@ def compute_metrics(gt_root, test_root, dino_path, output_path, requested_metric
     manager = mp.Manager()
     task_queue = manager.Queue()
     result_list = manager.list()
+    # Seed with already-scored entries so the final json contains both old + new.
+    for entry in resumed_results:
+        result_list.append(entry)
     stop_event = manager.Event()
 
     for task in all_data:
@@ -328,6 +359,10 @@ if __name__ == '__main__':
     parser.add_argument('--video_max_time', type=int, default=None, help='Maximum video frames (default: None = use all frames)')
     parser.add_argument('--output', type=str, default=None, help='Output JSON file path')
     parser.add_argument('--metrics', type=str, default='lcm,visual,dino,action,gsc', help='Requested metrics to compute, comma separated (e.g. dino,visual)')
+    parser.add_argument('--resume', type=str, default='auto',
+                        help='Path to a previous result_*.json to skip already-scored (perspective, test_type, path) entries. '
+                             "'auto' (default) picks the most recent result_<basename(test_root)>_*.json next to process.py. "
+                             "'none' or '' disables skipping.")
 
     args = parser.parse_args()
 
@@ -347,6 +382,26 @@ if __name__ == '__main__':
     tqdm.write(f"Starting computation with {args.num_gpus} GPU(s)...")
     tqdm.write(f"Output will be saved to: {output_path}")
 
+    # Resolve --resume: 'auto' picks the most recent result_<basename>_*.json,
+    # 'none'/'' disables, anything else is a literal file path.
+    resume_path = None
+    if args.resume and args.resume.lower() not in ('none', ''):
+        if args.resume == 'auto':
+            import glob
+            pattern = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', f'result_{os.path.basename(args.test_root)}_*.json')
+            candidates = sorted(glob.glob(pattern))
+            resume_path = candidates[-1] if candidates else None
+            if resume_path:
+                tqdm.write(f"[resume] auto-picked previous results: {resume_path}")
+            else:
+                tqdm.write(f"[resume] auto-resume requested but no prior result_{os.path.basename(args.test_root)}_*.json found; scoring from scratch")
+        else:
+            if os.path.exists(args.resume):
+                resume_path = args.resume
+                tqdm.write(f"[resume] using explicit prior results: {resume_path}")
+            else:
+                tqdm.write(f"[resume] WARNING: --resume {args.resume} does not exist; scoring from scratch")
+
     video_results = None
     try:
         video_results = compute_metrics(
@@ -356,7 +411,8 @@ if __name__ == '__main__':
             output_path,
             requested_metrics=[m.strip() for m in args.metrics.split(',')],
             video_max_time=args.video_max_time,
-            num_gpus=args.num_gpus
+            num_gpus=args.num_gpus,
+            resume_path=resume_path,
         )
     except KeyboardInterrupt:
         tqdm.write("\n\n" + "="*60)
