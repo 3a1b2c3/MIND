@@ -16,6 +16,18 @@ setlocal enableextensions
 
 cd /d "%~dp0"
 set PYTHONIOENCODING=utf-8
+:: Strip cross-venv pollution. The PowerShell session that launched this bat
+:: often has VIRTUAL_ENV / PYTHONHOME / PYTHONPATH set from another project
+:: (e.g. scope's uv-managed 3.12 venv). MIND uses python 3.10, so if those
+:: leak through they make Python try to graft scope's 3.12 site-packages onto
+:: MIND's 3.10 stdlib path, causing _sre.MAGIC mismatch at startup.
+set "PYTHONHOME="
+set "PYTHONPATH="
+set "PYTHONSTARTUP="
+set "VIRTUAL_ENV="
+set "VIRTUAL_ENV_PROMPT="
+set "UV_PYTHON="
+set "UV_PROJECT_ENVIRONMENT="
 
 set PY=%~dp0.venv\Scripts\python.exe
 set GT_ROOT=C:\workspace\world\MIND-Data

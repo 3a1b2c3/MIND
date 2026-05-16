@@ -13,7 +13,6 @@ import os
 from pathlib import Path
 import torch.multiprocessing as mp
 import warnings
-from metrics.action import action_accuracy_metric
 from metrics.lcm import lcm_metric, merge_lcm_results
 from metrics.visual_quality import visual_quality_metric, merge_visual_results
 from metrics.dino import dino_mse_metric, merge_dino_results
@@ -168,6 +167,11 @@ def compute_metrics_single_gpu(task_queue, result_list, gt_root, test_root, dino
                     torch.cuda.empty_cache()
 
                     if 'action' in requested_metrics:
+                        # Lazy import — pulling in metrics.action drags in vipe_utils, which
+                        # spawns ViPE subprocesses that hit _sre.MAGIC mismatch + missing
+                        # sm_120 CUDA kernels in DeepVerse venv. Importing only when needed
+                        # lets the other 4 metrics (lcm/visual/dino/gsc) score cleanly.
+                        from metrics.action import action_accuracy_metric
                         tqdm.write(f"{prefix}: [4/5] Computing action accuracy (ViPE)...")
                         # 计算action accuracy
                         actions = extract_actions_from_json(os.path.join(gt_dir, data_path, 'action.json'), mark_time, 97)
@@ -377,7 +381,7 @@ if __name__ == '__main__':
         output_path = args.output
     else:
         from datetime import datetime
-        output_path = f'result_{os.path.basename(args.test_root)}_{datetime.now().strftime("%Y-%m-%d-%H:%M:%S")}.json'
+        output_path = f'result_{os.path.basename(args.test_root)}_{datetime.now().strftime("%Y-%m-%d-%H-%M-%S")}.json'
 
     tqdm.write(f"Starting computation with {args.num_gpus} GPU(s)...")
     tqdm.write(f"Output will be saved to: {output_path}")

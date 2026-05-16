@@ -158,18 +158,30 @@ def run_cmd(cmd: List[str], cwd: Optional[Path] = None, quiet: bool = False, env
     if not quiet:
         tqdm.write(f"Running command: {' '.join(cmd)}")
 
-    # Merge with existing environment
+    # Merge with existing environment, then STRIP cross-venv pollution.
+    # MIND venv (cpython 3.10) invokes ViPE.exe (DeepVerse venv 3.12) here. If
+    # PYTHONHOME / PYTHONPATH / VIRTUAL_ENV from the parent leak in, the spawned
+    # DeepVerse python tries to load MIND's 3.10 stdlib and crashes with
+    # `AssertionError: SRE module mismatch` at `import re`.
     proc_env = os.environ.copy()
+    for k in ("PYTHONHOME", "PYTHONPATH", "PYTHONSTARTUP", "PYTHONNOUSERSITE",
+              "VIRTUAL_ENV", "VIRTUAL_ENV_PROMPT", "UV_PYTHON", "UV_PROJECT_ENVIRONMENT"):
+        proc_env.pop(k, None)
     if env:
         proc_env.update(env)
 
+    # text=True alone uses the OS locale codec (cp1252 on Windows), and ViPE's
+    # stderr contains tqdm bars / unicode arrows that are not cp1252 — that
+    # raises UnicodeDecodeError(`charmap`) inside run_cmd before we even see
+    # the real return code. Force utf-8 with replacement.
     if quiet:
         p = subprocess.run(cmd, cwd=str(cwd) if cwd else None,
                           stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
-                          text=True, env=proc_env)
+                          text=True, encoding="utf-8", errors="replace", env=proc_env)
     else:
         p = subprocess.run(cmd, cwd=str(cwd) if cwd else None,
-                          stderr=subprocess.PIPE, text=True, env=proc_env)
+                          stderr=subprocess.PIPE,
+                          text=True, encoding="utf-8", errors="replace", env=proc_env)
 
     if p.returncode != 0:
         error_msg = f"Command failed: {' '.join(cmd)}"
