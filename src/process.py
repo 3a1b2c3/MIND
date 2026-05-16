@@ -143,7 +143,11 @@ def compute_metrics_single_gpu(task_queue, result_list, gt_root, test_root, dino
                         is_ended, gt_imgs = gt_reader.read_batch(process_batch_size * 10)
                         _, sample_imgs = sample_reader.read_batch(process_batch_size * 10)
 
-                        if is_ended or gt_imgs is None or sample_imgs is None:
+                        # VideoStreamReader.read_batch returns (is_ended=True, frames_tensor)
+                        # when the request consumes the rest of the video — the frames are
+                        # still valid. Only skip if we got no frames at all; compute metrics
+                        # on whatever the final batch returned, then break.
+                        if gt_imgs is None or sample_imgs is None:
                             break
 
                         if 'lcm' in requested_metrics:
@@ -162,6 +166,9 @@ def compute_metrics_single_gpu(task_queue, result_list, gt_root, test_root, dino
                             result['dino'] = merge_dino_results(result.get('dino'), dino)
 
                         del gt_imgs, sample_imgs
+
+                        if is_ended:
+                            break
 
                     del gt_reader, sample_reader
                     torch.cuda.empty_cache()
@@ -217,7 +224,7 @@ def compute_metrics_single_gpu(task_queue, result_list, gt_root, test_root, dino
         torch.cuda.empty_cache()
 
 def compute_metrics(gt_root, test_root, dino_path, output_path, requested_metrics=['lcm', 'visual', 'dino', 'action'],
-                   video_max_time=100, process_batch_size=10, num_gpus=1, resume_path=None):
+                   video_max_time=100, process_batch_size=10, num_gpus=1, resume_path=None, limit=None):
     result_dict = {'data':[], 'video_max_time':video_max_time}
 
     # Load prior results (if --resume): seed result_dict and build skip-set so
@@ -274,6 +281,10 @@ def compute_metrics(gt_root, test_root, dino_path, output_path, requested_metric
 
     if resume_keys:
         tqdm.write(f"[resume] skipping {len(resume_keys)} already-scored sample(s); {len(all_data)} to score")
+
+    if limit is not None and limit > 0:
+        all_data = all_data[:limit]
+        tqdm.write(f"[limit] truncated to first {limit} sample(s)")
 
     if len(all_data) == 0:
         tqdm.write(f"No data found!")
@@ -367,6 +378,8 @@ if __name__ == '__main__':
                         help='Path to a previous result_*.json to skip already-scored (perspective, test_type, path) entries. '
                              "'auto' (default) picks the most recent result_<basename(test_root)>_*.json next to process.py. "
                              "'none' or '' disables skipping.")
+    parser.add_argument('--limit', type=int, default=None,
+                        help='Score only the first N samples after dedupe/resume filtering. Use --limit 1 for a smoke test.')
 
     args = parser.parse_args()
 
@@ -417,6 +430,7 @@ if __name__ == '__main__':
             video_max_time=args.video_max_time,
             num_gpus=args.num_gpus,
             resume_path=resume_path,
+            limit=args.limit,
         )
     except KeyboardInterrupt:
         tqdm.write("\n\n" + "="*60)
