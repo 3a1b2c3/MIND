@@ -229,7 +229,8 @@ def compute_metrics_single_gpu(task_queue, result_list, gt_root, test_root, dino
         torch.cuda.empty_cache()
 
 def compute_metrics(gt_root, test_root, dino_path, output_path, requested_metrics=['lcm', 'visual', 'dino', 'action'],
-                   video_max_time=100, process_batch_size=10, num_gpus=1, resume_path=None, limit=None):
+                   video_max_time=100, process_batch_size=10, num_gpus=1, resume_path=None, limit=None,
+                   perspectives=None):
     result_dict = {'data':[], 'video_max_time':video_max_time}
 
     # Load prior results (if --resume): seed result_dict and build skip-set so
@@ -256,8 +257,12 @@ def compute_metrics(gt_root, test_root, dino_path, output_path, requested_metric
 
     mp.set_start_method('spawn', force=True)
 
+    all_perspectives = ['1st_data', '3rd_data']
+    active_perspectives = perspectives if perspectives else all_perspectives
+    if perspectives:
+        tqdm.write(f"[perspectives] restricting to: {','.join(active_perspectives)}")
     all_data = []
-    for perspective in ['1st_data', '3rd_data']:
+    for perspective in active_perspectives:
         for test_type in ['mem_test', 'action_space_test', 'mirror_test']:
             if test_type == 'mirror_test':
                 if 'gsc' in requested_metrics:
@@ -385,6 +390,9 @@ if __name__ == '__main__':
                              "'none' or '' disables skipping.")
     parser.add_argument('--limit', type=int, default=None,
                         help='Score only the first N samples after dedupe/resume filtering. Use --limit 1 for a smoke test.')
+    parser.add_argument('--perspectives', type=str, default=None,
+                        help="Comma-separated perspectives to score (e.g. '1st_data' or '1st_data,3rd_data'). "
+                             "Default: all perspectives.")
 
     args = parser.parse_args()
 
@@ -436,6 +444,7 @@ if __name__ == '__main__':
             num_gpus=args.num_gpus,
             resume_path=resume_path,
             limit=args.limit,
+            perspectives=[p.strip() for p in args.perspectives.split(',')] if args.perspectives else None,
         )
     except KeyboardInterrupt:
         tqdm.write("\n\n" + "="*60)

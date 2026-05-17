@@ -36,10 +36,13 @@ set MIND_TESTS=C:\workspace\world\MIND-tests
 set TEST_SUBDIR=%~1
 set METRICS=%~2
 set NUM_GPUS=%~3
+set PERSPECTIVES=%~4
 
 if not defined TEST_SUBDIR set TEST_SUBDIR=matrix-game-3
 if not defined METRICS set METRICS=lcm,visual,dino,action,gsc
 if not defined NUM_GPUS set NUM_GPUS=1
+:: PERSPECTIVES is opt-in only. Pass e.g. "1st_data" as the 4th positional arg
+:: to restrict; omit (or pass an empty string) to score all perspectives.
 
 :: Accept either a bare subdir name (resolved under MIND_TESTS) or an absolute
 :: path. Detection: an absolute path contains ":\" or starts with "\\" (UNC).
@@ -70,13 +73,18 @@ if not exist "%TEST_ROOT%" (
 echo ============================================================
 echo MIND scoring
 echo ============================================================
-echo   gt_root   : %GT_ROOT%
-echo   test_root : %TEST_ROOT%
-echo   metrics   : %METRICS%
-echo   gpus      : %NUM_GPUS%
+echo   gt_root      : %GT_ROOT%
+echo   test_root    : %TEST_ROOT%
+echo   metrics      : %METRICS%
+echo   gpus         : %NUM_GPUS%
+echo   perspectives : %PERSPECTIVES%
 echo ============================================================
 
-"%PY%" src\process.py --gt_root "%GT_ROOT%" --test_root "%TEST_ROOT%" --metrics %METRICS% --num_gpus %NUM_GPUS%
+if defined PERSPECTIVES (
+    "%PY%" src\process.py --gt_root "%GT_ROOT%" --test_root "%TEST_ROOT%" --metrics %METRICS% --num_gpus %NUM_GPUS% --perspectives %PERSPECTIVES%
+) else (
+    "%PY%" src\process.py --gt_root "%GT_ROOT%" --test_root "%TEST_ROOT%" --metrics %METRICS% --num_gpus %NUM_GPUS%
+)
 
 set EXIT_CODE=%ERRORLEVEL%
 if %EXIT_CODE%==0 (
