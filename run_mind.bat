@@ -2,15 +2,16 @@
 :: Score a test video set against MIND-Data ground truth.
 ::
 :: Usage:
-::   run_mind.bat                                  scores matrix-game-3, all metrics
-::   run_mind.bat dreamx-world                     scores dreamx-world, all metrics
-::   run_mind.bat <test_subdir>                    scores MIND-tests\<test_subdir>
-::   run_mind.bat <test_subdir> <metrics>          custom metrics
-::   run_mind.bat <test_subdir> <metrics> <gpus>   multi-GPU
+::   run_mind.bat                                          scores matrix-game-3, all metrics, both perspectives
+::   run_mind.bat <test_subdir>                            scores MIND-tests\<test_subdir>
+::   run_mind.bat <test_subdir> <metrics>                  custom metrics
+::   run_mind.bat <test_subdir> <metrics> <gpus>           multi-GPU
+::   run_mind.bat <test_subdir> <metrics> <gpus> <person>  person = 1st | 3rd | both (default: both)
 ::
 :: Examples:
 ::   run_mind.bat matrix-game-3 lcm,visual
 ::   run_mind.bat dreamx-world lcm,visual,dino,action,gsc 1
+::   run_mind.bat dreamx-world lcm,visual,dino,gsc 1 1st
 
 setlocal enableextensions
 
@@ -36,13 +37,25 @@ set MIND_TESTS=C:\workspace\world\MIND-tests
 set TEST_SUBDIR=%~1
 set METRICS=%~2
 set NUM_GPUS=%~3
-set PERSPECTIVES=%~4
+set PERSON=%~4
 
 if not defined TEST_SUBDIR set TEST_SUBDIR=matrix-game-3
-if not defined METRICS set METRICS=lcm,visual,dino,action,gsc
+:: Default omits 'action' — ViPE's UniDepth hits sm_120 / no kernel image on
+:: this GPU, retries 3x then errors per sample. Opt in explicitly by passing
+:: e.g. "lcm,visual,dino,action,gsc" as the 2nd arg.
+if not defined METRICS set METRICS=lcm,visual,dino,gsc
 if not defined NUM_GPUS set NUM_GPUS=1
-:: PERSPECTIVES is opt-in only. Pass e.g. "1st_data" as the 4th positional arg
-:: to restrict; omit (or pass an empty string) to score all perspectives.
+
+:: 4th positional = perspective filter. Accepts: 1st, 3rd, both (default = both).
+set PERSPECTIVES=
+if /I "%PERSON%"=="1st"  set PERSPECTIVES=1st_data
+if /I "%PERSON%"=="3rd"  set PERSPECTIVES=3rd_data
+if /I "%PERSON%"=="both" set PERSPECTIVES=
+if /I "%PERSON%"==""     set PERSPECTIVES=
+if defined PERSON if not defined PERSPECTIVES if /I not "%PERSON%"=="both" (
+    echo ERROR: 4th arg must be 1st, 3rd, or both ^(got: %PERSON%^)
+    exit /b 2
+)
 
 :: Accept either a bare subdir name (resolved under MIND_TESTS) or an absolute
 :: path. Detection: an absolute path contains ":\" or starts with "\\" (UNC).
@@ -77,7 +90,7 @@ echo   gt_root      : %GT_ROOT%
 echo   test_root    : %TEST_ROOT%
 echo   metrics      : %METRICS%
 echo   gpus         : %NUM_GPUS%
-echo   perspectives : %PERSPECTIVES%
+echo   person       : %PERSON% (perspectives=%PERSPECTIVES%)
 echo ============================================================
 
 if defined PERSPECTIVES (
