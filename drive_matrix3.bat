@@ -8,7 +8,14 @@
 ::   drive_matrix3.bat --perspective 1st_data     limit to first-person
 ::   drive_matrix3.bat --test-type mem_test       limit to memory tests
 ::
-:: All flags pass through to src\drive_matrix3.py.
+:: Metric selection (forwarded to run_mind.bat after staging):
+::   set MIND_METRICS=lcm,visual         pick a subset
+::   set MIND_METRICS=lcm,visual,dino    multiple
+::   (unset)                             default = lcm,visual,dino,action,gsc
+::   set MIND_GPUS=2                     multi-GPU scoring
+::   set MIND_PERSON=1st                 person = 1st | 3rd | both
+::
+:: All --flags pass through to src\drive_matrix3.py; MIND_* env vars stay in this bat.
 
 setlocal enableextensions
 
@@ -48,9 +55,13 @@ if not %EXIT_CODE%==0 (
     exit /b %EXIT_CODE%
 )
 
+if not defined MIND_PERSON  set MIND_PERSON=1st
+if not defined MIND_METRICS set MIND_METRICS=lcm,visual,dino,action,gsc
+if not defined MIND_GPUS    set MIND_GPUS=1
+
 echo.
 echo ============================================================
-echo Generation done. Running scoring: run_mind.bat matrix-game-3
+echo Generation done. Running scoring: run_mind.bat matrix-game-3 %MIND_METRICS% %MIND_GPUS% %MIND_PERSON%
 echo ============================================================
-call "%~dp0run_mind.bat" matrix-game-3
+call "%~dp0run_mind.bat" matrix-game-3 %MIND_METRICS% %MIND_GPUS% %MIND_PERSON%
 exit /b %ERRORLEVEL%
