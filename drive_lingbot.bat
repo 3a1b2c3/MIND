@@ -70,8 +70,8 @@ echo Staging done. Scoring with run_mind.bat %MODEL_NAME% ...
 echo ============================================================
 echo.
 
-:: Score only 1st_data to match generation. 4th arg = "1st" (run_mind PERSON flag).
-call "%~dp0run_mind.bat" %MODEL_NAME% lcm,visual,dino,action,gsc 1 1st
+:: run_mind.bat defaults PERSON=1st, matching this bat's 1st_data-only generation.
+call "%~dp0run_mind.bat" %MODEL_NAME%
 
 set SCORE_EXIT=%ERRORLEVEL%
 if not %SCORE_EXIT%==0 (

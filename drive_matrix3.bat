@@ -46,7 +46,9 @@ echo   model     : matrix-game-3
 echo   log       : %LOG%
 echo ============================================================
 
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0run_dreamx.ps1" "%LOG%" "%PY%" "src\drive_matrix3.py" "--gt-root" "%GT_ROOT%" "--test-root" "%MIND_TESTS%" %*
+:: --perspective 1st_data: only stage first-person samples. Override with an
+:: extra `--perspective 3rd_data` arg (argparse last-wins).
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0run_dreamx.ps1" "%LOG%" "%PY%" "src\drive_matrix3.py" "--gt-root" "%GT_ROOT%" "--test-root" "%MIND_TESTS%" "--perspective" "1st_data" %*
 
 set EXIT_CODE=%ERRORLEVEL%
 if not %EXIT_CODE%==0 (
@@ -61,7 +63,9 @@ if not defined MIND_GPUS    set MIND_GPUS=1
 
 echo.
 echo ============================================================
-echo Generation done. Running scoring: run_mind.bat matrix-game-3 %MIND_METRICS% %MIND_GPUS% %MIND_PERSON%
+echo Generation done. Running scoring: run_mind.bat matrix-game-3 "%MIND_METRICS%" %MIND_GPUS% %MIND_PERSON%
 echo ============================================================
-call "%~dp0run_mind.bat" matrix-game-3 %MIND_METRICS% %MIND_GPUS% %MIND_PERSON%
+:: Quote MIND_METRICS — CMD splits unquoted comma-bearing args, which would
+:: shove `dino` into the 4th positional (PERSON) and trigger an arg error.
+call "%~dp0run_mind.bat" matrix-game-3 "%MIND_METRICS%" %MIND_GPUS% %MIND_PERSON%
 exit /b %ERRORLEVEL%

@@ -42,13 +42,15 @@ set PERSON=%~4
 if not defined TEST_SUBDIR set TEST_SUBDIR=matrix-game-3
 if not defined METRICS set METRICS=lcm,visual,dino,action,gsc
 if not defined NUM_GPUS set NUM_GPUS=1
+:: 4th positional defaults to "1st" — driver bats (drive_dreamx, drive_lingbot,
+:: drive_matrix3) all generate 1st_data only. Override with "3rd" or "both".
+if not defined PERSON set PERSON=1st
 
-:: 4th positional = perspective filter. Accepts: 1st, 3rd, both (default = both).
+:: 4th positional = perspective filter. Accepts: 1st, 3rd, both.
 set PERSPECTIVES=
 if /I "%PERSON%"=="1st"  set PERSPECTIVES=1st_data
 if /I "%PERSON%"=="3rd"  set PERSPECTIVES=3rd_data
 if /I "%PERSON%"=="both" set PERSPECTIVES=
-if /I "%PERSON%"==""     set PERSPECTIVES=
 if defined PERSON if not defined PERSPECTIVES if /I not "%PERSON%"=="both" (
     echo ERROR: 4th arg must be 1st, 3rd, or both ^(got: %PERSON%^)
     exit /b 2
