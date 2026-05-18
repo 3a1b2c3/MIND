@@ -44,11 +44,12 @@ echo   model     : %MODEL_NAME%
 echo   log       : %LOG%
 echo ============================================================
 
-:: Speed bundle: half-resolution, 30 steps, 81 frames @ 16fps (still 5s output),
-:: fp8 transformer weights. ~4-5x faster than the full-res defaults.
+:: Speed bundle: half-resolution, 30 steps, 121 frames @ 24fps (5s @ MIND-std fps),
+:: fp8 transformer weights. ~4-5x faster than the full-res defaults but matches
+:: MIND-Data's 24 fps so cropped action-metric comparisons are like-for-like.
 :: --perspective 1st_data: only stage first-person samples. Override with an
 :: extra `--perspective 3rd_data` arg (argparse last-wins).
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0run_dreamx.ps1" "%LOG%" "%PY%" "src\drive_dreamx.py" "--gt-root" "%GT_ROOT%" "--test-root" "%MIND_TESTS%" "--model-name" "%MODEL_NAME%" "--height" "352" "--width" "640" "--video-length" "81" "--fps" "16" "--steps" "30" "--gpu-memory-mode" "model_full_load_and_qfloat8" "--perspective" "1st_data" %*
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0run_dreamx.ps1" "%LOG%" "%PY%" "src\drive_dreamx.py" "--gt-root" "%GT_ROOT%" "--test-root" "%MIND_TESTS%" "--model-name" "%MODEL_NAME%" "--height" "352" "--width" "640" "--video-length" "121" "--fps" "24" "--steps" "30" "--gpu-memory-mode" "model_full_load_and_qfloat8" "--perspective" "1st_data" %*
 
 set EXIT_CODE=%ERRORLEVEL%
 if not %EXIT_CODE%==0 (

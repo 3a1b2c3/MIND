@@ -205,7 +205,10 @@ def find_images_txt(root: Path) -> Optional[Path]:
 def vipe_to_colmap(out_dir: Path, vipe_repo: Path, gpu_id: int = 0) -> None:
     vipe_repo = vipe_repo.resolve()
     script = Path("scripts/vipe_to_colmap.py")
-    run_cmd(["python", str(script), str(out_dir)], cwd=vipe_repo, quiet=True, env={"CUDA_VISIBLE_DEVICES": str(gpu_id)})
+    # sys.executable instead of bare "python": the action-metric worker runs in
+    # MIND venv (cv2 4.13.0 present); bare `python` resolves via PATH to the
+    # uv-managed system python which has no cv2 -> ModuleNotFoundError.
+    run_cmd([sys.executable, str(script), str(out_dir)], cwd=vipe_repo, quiet=True, env={"CUDA_VISIBLE_DEVICES": str(gpu_id)})
 
 
 def parse_colmap_images_txt(images_txt: Path) -> Tuple[np.ndarray, int]:
