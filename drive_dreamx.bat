@@ -40,7 +40,9 @@ echo   model     : %MODEL_NAME%
 echo   log       : %LOG%
 echo ============================================================
 
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0run_dreamx.ps1" "%LOG%" "%PY%" "src\drive_dreamx.py" "--gt-root" "%GT_ROOT%" "--test-root" "%MIND_TESTS%" "--model-name" "%MODEL_NAME%" %*
+:: --perspective 1st_data: only stage first-person samples. Override with an
+:: extra `--perspective 3rd_data` arg (argparse last-wins).
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0run_dreamx.ps1" "%LOG%" "%PY%" "src\drive_dreamx.py" "--gt-root" "%GT_ROOT%" "--test-root" "%MIND_TESTS%" "--model-name" "%MODEL_NAME%" "--perspective" "1st_data" %*
 
 set EXIT_CODE=%ERRORLEVEL%
 if not %EXIT_CODE%==0 (
@@ -51,7 +53,8 @@ if not %EXIT_CODE%==0 (
 
 echo.
 echo ============================================================
-echo Generation done. Running scoring: run_mind.bat %MODEL_NAME%
+echo Generation done. Running scoring: run_mind.bat %MODEL_NAME% (1st only)
 echo ============================================================
-call "%~dp0run_mind.bat" "%MODEL_NAME%"
+:: Score only 1st_data to match generation. 4th arg = "1st" (run_mind PERSON flag).
+call "%~dp0run_mind.bat" "%MODEL_NAME%" lcm,visual,dino,action,gsc 1 1st
 exit /b %ERRORLEVEL%
