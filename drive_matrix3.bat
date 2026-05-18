@@ -52,7 +52,7 @@ echo ============================================================
 
 :: --perspective 1st_data: only stage first-person samples. Override with an
 :: extra `--perspective 3rd_data` arg (argparse last-wins).
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0run_dreamx.ps1" "%LOG%" "%PY%" "src\drive_matrix3.py" "--gt-root" "%GT_ROOT%" "--test-root" "%MIND_TESTS%" "--perspective" "1st_data" %*
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0run_dreamx.ps1" "%LOG%" "%PY%" "src\drive_matrix3.py" "--gt-root" "%GT_ROOT%" "--test-root" "%MIND_TESTS%" "--fps" "%MIND_FPS%" "--perspective" "1st_data" %*
 
 set EXIT_CODE=%ERRORLEVEL%
 if not %EXIT_CODE%==0 (

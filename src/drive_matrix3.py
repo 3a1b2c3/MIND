@@ -153,6 +153,8 @@ def main() -> int:
     parser.add_argument("--test-type", choices=TEST_TYPES, help="Limit to one test type")
     parser.add_argument("--limit", type=int, help="Only run first N matched samples")
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--fps", type=int, default=24,
+                        help="Accepted for bat-script consistency; matrix3 generate.py uses its own default (24).")
     args = parser.parse_args()
 
     if not MATRIX3_GENERATE.exists():

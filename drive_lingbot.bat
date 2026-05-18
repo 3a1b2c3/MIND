@@ -59,7 +59,7 @@ echo ============================================================
 :: --perspective 1st_data: lingbot-fast only stages first-person samples.
 :: To include 3rd_data, pass an overriding `--perspective 3rd_data` as an
 :: extra arg — argparse's "last wins" rule lets the user override.
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0run_dreamx.ps1" "%LOG%" "%PY%" "src\drive_lingbot.py" "--gt-root" "%GT_ROOT%" "--test-root" "%MIND_TESTS%" "--model-name" "%MODEL_NAME%" "--ckpt-dir" "%CKPT_DIR%" "--perspective" "1st_data" %*
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0run_dreamx.ps1" "%LOG%" "%PY%" "src\drive_lingbot.py" "--gt-root" "%GT_ROOT%" "--test-root" "%MIND_TESTS%" "--model-name" "%MODEL_NAME%" "--ckpt-dir" "%CKPT_DIR%" "--fps" "%MIND_FPS%" "--perspective" "1st_data" %*
 
 set EXIT_CODE=%ERRORLEVEL%
 if not %EXIT_CODE%==0 (

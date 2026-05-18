@@ -174,6 +174,9 @@ def main() -> int:
     p.add_argument("--force", action="store_true", help="Re-run even if output exists")
     p.add_argument("--dry-run", action="store_true")
     p.add_argument("--venv-py", type=Path, default=LINGBOT_VENV_PY)
+    p.add_argument("--fps", type=int, default=24,
+                   help="Accepted for bat-script consistency; lingbot sample_fps comes from wan_shared_cfg.sample_fps "
+                        "(patched to 24 in wan/configs/shared_config.py).")
 
     # LingBot-World inference knobs
     p.add_argument("--task", default="i2v-A14B", help="Only i2v-A14B ships today")
