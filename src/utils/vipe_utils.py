@@ -9,10 +9,10 @@ import subprocess
 
 
 def _resolve_vipe_cli() -> str:
-    """Locate the ViPE CLI. Prefer PATH; fall back to known checkout location.
-    build_vipe.bat installs ViPE editable into the DeepVerse venv (not the MIND
-    venv), so when process.py runs from the MIND venv the bare `vipe` is not on
-    PATH and subprocess.run(["vipe", ...]) raises WinError 2.
+    """Locate the ViPE CLI. Prefer PATH; fall back to known checkout locations.
+    ViPE is now installed editable into the MIND venv (built against torch 2.10
+    + cu128 + sm_120 — see build_vipe.bat). The DeepVerse copy is kept as a
+    fallback in case MIND's build is missing / broken.
 
     Function-scope imports guard against multiprocessing-spawn issues where a
     worker re-imports a stale or partial vipe_utils module: even if module-level
@@ -23,6 +23,10 @@ def _resolve_vipe_cli() -> str:
     if found:
         return found
     candidates = [
+        # MIND venv (preferred): torch 2.10 has sm_120 SASS so UniDepth's
+        # F.linear / camera_layer no longer fails on RTX 5090.
+        r"C:\workspace\world\MIND\.venv\Scripts\vipe.exe",
+        # DeepVerse venv (fallback): torch 2.7, action metric fails on sm_120.
         r"C:\workspace\world\DeepVerse\.venv\Scripts\vipe.exe",
     ]
     for c in candidates:
@@ -159,10 +163,11 @@ def run_cmd(cmd: List[str], cwd: Optional[Path] = None, quiet: bool = False, env
         tqdm.write(f"Running command: {' '.join(cmd)}")
 
     # Merge with existing environment, then STRIP cross-venv pollution.
-    # MIND venv (cpython 3.10) invokes ViPE.exe (DeepVerse venv 3.12) here. If
-    # PYTHONHOME / PYTHONPATH / VIRTUAL_ENV from the parent leak in, the spawned
-    # DeepVerse python tries to load MIND's 3.10 stdlib and crashes with
-    # `AssertionError: SRE module mismatch` at `import re`.
+    # Defensive even now that vipe.exe lives in MIND venv (same python as
+    # process.py): if a user runs process.py from a different venv (e.g. uv-managed
+    # outer env with PYTHONHOME set), MIND's vipe.exe needs a clean env to load
+    # its own python correctly. Was originally added for the DeepVerse-vipe path
+    # (cp310 calling cp312) and still protects the MIND-vipe path.
     proc_env = os.environ.copy()
     for k in ("PYTHONHOME", "PYTHONPATH", "PYTHONSTARTUP", "PYTHONNOUSERSITE",
               "VIRTUAL_ENV", "VIRTUAL_ENV_PROMPT", "UV_PYTHON", "UV_PROJECT_ENVIRONMENT"):

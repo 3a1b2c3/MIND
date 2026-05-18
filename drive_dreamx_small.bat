@@ -46,7 +46,9 @@ echo ============================================================
 
 :: Speed bundle: half-resolution, 30 steps, 81 frames @ 16fps (still 5s output),
 :: fp8 transformer weights. ~4-5x faster than the full-res defaults.
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0run_dreamx.ps1" "%LOG%" "%PY%" "src\drive_dreamx.py" "--gt-root" "%GT_ROOT%" "--test-root" "%MIND_TESTS%" "--model-name" "%MODEL_NAME%" "--height" "352" "--width" "640" "--video-length" "81" "--fps" "16" "--steps" "30" "--gpu-memory-mode" "model_full_load_and_qfloat8" %*
+:: --perspective 1st_data: only stage first-person samples. Override with an
+:: extra `--perspective 3rd_data` arg (argparse last-wins).
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0run_dreamx.ps1" "%LOG%" "%PY%" "src\drive_dreamx.py" "--gt-root" "%GT_ROOT%" "--test-root" "%MIND_TESTS%" "--model-name" "%MODEL_NAME%" "--height" "352" "--width" "640" "--video-length" "81" "--fps" "16" "--steps" "30" "--gpu-memory-mode" "model_full_load_and_qfloat8" "--perspective" "1st_data" %*
 
 set EXIT_CODE=%ERRORLEVEL%
 if not %EXIT_CODE%==0 (
@@ -57,7 +59,8 @@ if not %EXIT_CODE%==0 (
 
 echo.
 echo ============================================================
-echo Generation done. Running scoring: run_mind.bat %MODEL_NAME%
+echo Generation done. Running scoring: run_mind.bat %MODEL_NAME% (1st only)
 echo ============================================================
-call "%~dp0run_mind.bat" "%MODEL_NAME%"
+:: Score only 1st_data to match generation. 4th arg = "1st" (run_mind PERSON flag).
+call "%~dp0run_mind.bat" "%MODEL_NAME%" lcm,visual,dino,action,gsc 1 1st
 exit /b %ERRORLEVEL%
