@@ -40,10 +40,7 @@ set NUM_GPUS=%~3
 set PERSON=%~4
 
 if not defined TEST_SUBDIR set TEST_SUBDIR=matrix-game-3
-:: Default omits 'action' — ViPE's UniDepth hits sm_120 / no kernel image on
-:: this GPU, retries 3x then errors per sample. Opt in explicitly by passing
-:: e.g. "lcm,visual,dino,action,gsc" as the 2nd arg.
-if not defined METRICS set METRICS=lcm,visual,dino,gsc
+if not defined METRICS set METRICS=lcm,visual,dino,action,gsc
 if not defined NUM_GPUS set NUM_GPUS=1
 
 :: 4th positional = perspective filter. Accepts: 1st, 3rd, both (default = both).
