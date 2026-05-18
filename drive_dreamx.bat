@@ -40,9 +40,11 @@ echo   model     : %MODEL_NAME%
 echo   log       : %LOG%
 echo ============================================================
 
+:: MIND standard fps (24) — matches GT MIND-Data + scoring crop expectations.
+if not defined MIND_FPS set MIND_FPS=24
 :: --perspective 1st_data: only stage first-person samples. Override with an
 :: extra `--perspective 3rd_data` arg (argparse last-wins).
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0run_dreamx.ps1" "%LOG%" "%PY%" "src\drive_dreamx.py" "--gt-root" "%GT_ROOT%" "--test-root" "%MIND_TESTS%" "--model-name" "%MODEL_NAME%" "--perspective" "1st_data" %*
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0run_dreamx.ps1" "%LOG%" "%PY%" "src\drive_dreamx.py" "--gt-root" "%GT_ROOT%" "--test-root" "%MIND_TESTS%" "--model-name" "%MODEL_NAME%" "--fps" "%MIND_FPS%" "--perspective" "1st_data" %*
 
 set EXIT_CODE=%ERRORLEVEL%
 if not %EXIT_CODE%==0 (

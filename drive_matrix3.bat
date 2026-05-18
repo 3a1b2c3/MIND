@@ -28,6 +28,10 @@ set GT_ROOT=C:\workspace\world\MIND-Data
 set MIND_TESTS=C:\workspace\world\MIND-tests
 set LOG=%~dp0drive_matrix3.log
 
+:: matrix3 generate.py defaults to 24 fps (MIND-Data standard). No --fps flag exposed;
+:: documented here for traceability. Override would require patching matrix3 generate.py.
+if not defined MIND_FPS set MIND_FPS=24
+
 if not exist "%PY%" (
     echo ERROR: venv python not found: %PY%
     exit /b 2

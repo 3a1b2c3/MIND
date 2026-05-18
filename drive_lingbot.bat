@@ -28,6 +28,10 @@ set MODEL_NAME=lingbot-fast
 set CKPT_DIR=C:\workspace\world\lingbot-world\fast
 set LOG=%~dp0drive_lingbot.log
 
+:: lingbot fps is set via wan/configs/shared_config.py (sample_fps=24 patched in).
+:: MIND_FPS here is for traceability only; lingbot doesn't expose a CLI --fps flag.
+if not defined MIND_FPS set MIND_FPS=24
+
 if not exist "%PY%" (
     echo ERROR: venv python not found: %PY%
     exit /b 2

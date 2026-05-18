@@ -49,7 +49,8 @@ echo ============================================================
 :: MIND-Data's 24 fps so cropped action-metric comparisons are like-for-like.
 :: --perspective 1st_data: only stage first-person samples. Override with an
 :: extra `--perspective 3rd_data` arg (argparse last-wins).
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0run_dreamx.ps1" "%LOG%" "%PY%" "src\drive_dreamx.py" "--gt-root" "%GT_ROOT%" "--test-root" "%MIND_TESTS%" "--model-name" "%MODEL_NAME%" "--height" "352" "--width" "640" "--video-length" "121" "--fps" "24" "--steps" "30" "--gpu-memory-mode" "model_full_load_and_qfloat8" "--perspective" "1st_data" %*
+if not defined MIND_FPS set MIND_FPS=24
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0run_dreamx.ps1" "%LOG%" "%PY%" "src\drive_dreamx.py" "--gt-root" "%GT_ROOT%" "--test-root" "%MIND_TESTS%" "--model-name" "%MODEL_NAME%" "--height" "352" "--width" "640" "--video-length" "121" "--fps" "%MIND_FPS%" "--steps" "30" "--gpu-memory-mode" "model_full_load_and_qfloat8" "--perspective" "1st_data" %*
 
 set EXIT_CODE=%ERRORLEVEL%
 if not %EXIT_CODE%==0 (

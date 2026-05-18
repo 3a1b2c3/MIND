@@ -1,4 +1,4 @@
-@echo off
+﻿@echo off
 :: Stage DeepVerse videos into MIND-tests\deepverse\ for run_mind.bat scoring.
 ::
 :: TODO: needs src\drive_deepverse.py that:
@@ -17,6 +17,7 @@ set MIND_TESTS=C:\workspace\world\MIND-tests
 set MODEL_NAME=deepverse
 set DEEPVERSE_REPO=C:\workspace\world\DeepVerse
 set LOG=%~dp0drive_deepverse.log
+if not defined MIND_FPS set MIND_FPS=24
 
 if not exist "%PY%" ( echo ERROR: venv python not found: %PY% & exit /b 2 )
 if not exist "%GT_ROOT%" ( echo ERROR: gt_root not found: %GT_ROOT% & exit /b 2 )
@@ -40,7 +41,7 @@ echo   deepverse    : %DEEPVERSE_REPO%
 echo   log          : %LOG%
 echo ============================================================
 
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0run_dreamx.ps1" "%LOG%" "%PY%" "src\drive_deepverse.py" "--gt-root" "%GT_ROOT%" "--test-root" "%MIND_TESTS%" "--model-name" "%MODEL_NAME%" "--deepverse-repo" "%DEEPVERSE_REPO%" "--perspective" "1st_data" %*
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0run_dreamx.ps1" "%LOG%" "%PY%" "src\drive_deepverse.py" "--gt-root" "%GT_ROOT%" "--test-root" "%MIND_TESTS%" "--model-name" "%MODEL_NAME%" "--deepverse-repo" "%DEEPVERSE_REPO%" "--fps" "%MIND_FPS%" "--perspective" "1st_data" %*
 
 set EXIT_CODE=%ERRORLEVEL%
 if not %EXIT_CODE%==0 ( echo. & echo ERROR: drive_deepverse.py exited with %EXIT_CODE% & exit /b %EXIT_CODE% )

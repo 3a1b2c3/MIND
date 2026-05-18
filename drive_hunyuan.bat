@@ -1,4 +1,4 @@
-@echo off
+﻿@echo off
 :: Stage Hunyuan-GameCraft videos into MIND-tests\hunyuan-gamecraft\ for run_mind.bat scoring.
 ::
 :: Hunyuan-GameCraft has no dedicated venv; run_low_mem.bat uses bare `python`.
@@ -24,6 +24,7 @@ set MIND_TESTS=C:\workspace\world\MIND-tests
 set MODEL_NAME=hunyuan-gamecraft
 set HUNYUAN_REPO=C:\workspace\world\Hunyuan-GameCraft-1.0
 set LOG=%~dp0drive_hunyuan.log
+if not defined MIND_FPS set MIND_FPS=24
 
 if not exist "%PY%" ( echo ERROR: venv python not found: %PY% & exit /b 2 )
 if not exist "%GT_ROOT%" ( echo ERROR: gt_root not found: %GT_ROOT% & exit /b 2 )
@@ -48,7 +49,7 @@ echo   hunyuan_py   : %HUNYUAN_PY%
 echo   log          : %LOG%
 echo ============================================================
 
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0run_dreamx.ps1" "%LOG%" "%PY%" "src\drive_hunyuan.py" "--gt-root" "%GT_ROOT%" "--test-root" "%MIND_TESTS%" "--model-name" "%MODEL_NAME%" "--hunyuan-repo" "%HUNYUAN_REPO%" "--hunyuan-py" "%HUNYUAN_PY%" "--perspective" "1st_data" %*
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0run_dreamx.ps1" "%LOG%" "%PY%" "src\drive_hunyuan.py" "--gt-root" "%GT_ROOT%" "--test-root" "%MIND_TESTS%" "--model-name" "%MODEL_NAME%" "--hunyuan-repo" "%HUNYUAN_REPO%" "--hunyuan-py" "%HUNYUAN_PY%" "--fps" "%MIND_FPS%" "--perspective" "1st_data" %*
 
 set EXIT_CODE=%ERRORLEVEL%
 if not %EXIT_CODE%==0 ( echo. & echo ERROR: drive_hunyuan.py exited with %EXIT_CODE% & exit /b %EXIT_CODE% )
