@@ -82,6 +82,8 @@ if not exist "%TEST_ROOT%" (
     exit /b 2
 )
 
+set LOG=%~dp0run_mind_%TEST_SUBDIR%.log
+
 echo ============================================================
 echo MIND scoring
 echo ============================================================
@@ -90,12 +92,15 @@ echo   test_root    : %TEST_ROOT%
 echo   metrics      : %METRICS%
 echo   gpus         : %NUM_GPUS%
 echo   person       : %PERSON% (perspectives=%PERSPECTIVES%)
+echo   log          : %LOG%
 echo ============================================================
 
+:: Use run_dreamx.ps1 to tee scoring output to both terminal AND a timestamped
+:: log file. Same wrapper that drive_*.bat use for generation logs.
 if defined PERSPECTIVES (
-    "%PY%" src\process.py --gt_root "%GT_ROOT%" --test_root "%TEST_ROOT%" --metrics %METRICS% --num_gpus %NUM_GPUS% --perspectives %PERSPECTIVES%
+    powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0run_dreamx.ps1" "%LOG%" "%PY%" "src\process.py" "--gt_root" "%GT_ROOT%" "--test_root" "%TEST_ROOT%" "--metrics" "%METRICS%" "--num_gpus" "%NUM_GPUS%" "--perspectives" "%PERSPECTIVES%"
 ) else (
-    "%PY%" src\process.py --gt_root "%GT_ROOT%" --test_root "%TEST_ROOT%" --metrics %METRICS% --num_gpus %NUM_GPUS%
+    powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0run_dreamx.ps1" "%LOG%" "%PY%" "src\process.py" "--gt_root" "%GT_ROOT%" "--test_root" "%TEST_ROOT%" "--metrics" "%METRICS%" "--num_gpus" "%NUM_GPUS%"
 )
 
 set EXIT_CODE=%ERRORLEVEL%
