@@ -97,6 +97,12 @@ def run_one(sample: dict, test_root: Path, model_name: str, work_dir: Path, dry_
     extract_first_frame(sample["video"], frame_png)
 
     out.parent.mkdir(parents=True, exist_ok=True)
+    # Speed knobs (env-overridable; defaults match the original calibrated values).
+    #   MIND_M3_ITERATIONS    -> --num_iterations (default 8). Outer rollout loop.
+    #   MIND_M3_STEPS         -> --num_inference_steps (default 5). Diffusion steps per iter.
+    # Halving either roughly halves wall-clock at a quality cost; tune per run.
+    m3_iters = os.environ.get("MIND_M3_ITERATIONS", "8")
+    m3_steps = os.environ.get("MIND_M3_STEPS", "5")
     cmd = [
         str(MATRIX3_VENV_PY),
         str(MATRIX3_GENERATE),
@@ -104,8 +110,8 @@ def run_one(sample: dict, test_root: Path, model_name: str, work_dir: Path, dry_
         "--ckpt_dir", MATRIX3_CKPT_DIR,
         "--fa_version", "2",
         "--use_int8",
-        "--num_iterations", "8",
-        "--num_inference_steps", "5",
+        "--num_iterations", m3_iters,
+        "--num_inference_steps", m3_steps,
         "--sample_guide_scale", "1.0",
         "--image", str(frame_png),
         "--prompt", prompt,
