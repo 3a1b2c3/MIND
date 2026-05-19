@@ -256,8 +256,11 @@ def main() -> int:
     env["PYTHONIOENCODING"] = "utf-8"
     env["TOKENIZERS_PARALLELISM"] = "false"
     env["TORCHDYNAMO_DISABLE"] = "1"
-    env["HF_HUB_OFFLINE"] = "1"
-    env["TRANSFORMERS_OFFLINE"] = "1"
+    # NOTE: deliberately NOT setting HF_HUB_OFFLINE=1 (test_sana_wm.bat does, but
+    # transformers' _patch_mistral_regex calls hf_api.model_info() to detect
+    # base-mistral variants for gemma-2-2b-it, and without that metadata cached
+    # locally the offline mode raises OfflineModeIsEnabled. Letting it reach
+    # HF is a tiny one-shot check.
 
     failures: list[str] = []
     for i, m in enumerate(pending, 1):
@@ -273,7 +276,11 @@ def main() -> int:
 
         target = m["target"]
         target.parent.mkdir(parents=True, exist_ok=True)
-        out_name = "video"  # inference_sana_wm.py writes <output_dir>/<name>.mp4
+        # inference_sana_wm.py writes <output_dir>/<name>_generated.mp4 (appends
+        # _generated regardless of --name), so we ask Sana for "video" and then
+        # rename video_generated.mp4 -> video.mp4 after the subprocess returns.
+        out_name = "video"
+        sana_out_mp4 = target.parent / f"{out_name}_generated.mp4"
 
         cmd = [
             str(args.sana_py), str(sana_entry),
@@ -313,6 +320,8 @@ def main() -> int:
         elapsed = time.perf_counter() - t0
         print(f"  rc={rc}  elapsed={elapsed:.1f}s")
 
+        if rc == 0 and sana_out_mp4.exists():
+            sana_out_mp4.replace(target)
         if rc == 0 and target.exists():
             log_mp4(args.model_name, s["perspective"], s["test_type"], s["gt_name"], target)
         else:

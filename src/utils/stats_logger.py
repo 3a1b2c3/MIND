@@ -6,9 +6,12 @@ one-shot nvidia-smi sample of VRAM used/free + GPU utilization, and append
 one row to stats_gen.csv. Continuous peak sampling is the responsibility of
 an external monitor task, not this module.
 
-Schema (preserves the original stats_gen.csv header — no fps column):
+Schema:
     timestamp, model, perspective, test_type, gt_name,
-    size_mb, ram_max_gb, vram_used_mib, vram_free_mib, gpu_util_pct
+    size_mb, fps, ram_max_gb, vram_used_mib, vram_free_mib, gpu_util_pct
+
+fps = playback fps read from the mp4 itself (rounded to 2 decimals); not a
+generation-speed metric. Empty when av can't open the file.
 """
 
 import csv
@@ -17,14 +20,26 @@ import os
 import subprocess
 from pathlib import Path
 
+import av
 import psutil
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 STATS_CSV = Path(os.environ.get("MIND_STATS_CSV", REPO_ROOT / "stats_gen.csv"))
 HEADER = [
     "timestamp", "model", "perspective", "test_type", "gt_name",
-    "size_mb", "ram_max_gb", "vram_used_mib", "vram_free_mib", "gpu_util_pct",
+    "size_mb", "fps", "ram_max_gb", "vram_used_mib", "vram_free_mib", "gpu_util_pct",
 ]
+
+
+def _mp4_fps(mp4_path: Path):
+    try:
+        with av.open(str(mp4_path)) as c:
+            s = c.streams.video[0]
+            if s.average_rate is None:
+                return ""
+            return f"{float(s.average_rate):.2f}"
+    except Exception:
+        return ""
 
 
 def _nvidia_smi_snapshot(gpu_index: int = 0):
@@ -53,6 +68,7 @@ def log_mp4(model: str, perspective: str, test_type: str, gt_name: str, mp4_path
         datetime.datetime.now().isoformat(timespec="seconds"),
         model, perspective, test_type, gt_name,
         f"{size_mb:.2f}",
+        _mp4_fps(mp4_path),
         f"{rss_gb:.2f}",
         "" if vram_used is None else vram_used,
         "" if vram_free is None else vram_free,
