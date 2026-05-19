@@ -27,6 +27,8 @@ from pathlib import Path
 
 import av
 
+from utils.stats_logger import log_mp4
+
 DREAMX_REPO = Path(r"C:\workspace\world\DreamX-World")
 # Override via DREAMX_VENV_PY env var when DreamX-World's own .venv is missing
 # (e.g. share the MIND scoring venv if its torch stack is compatible).
@@ -298,6 +300,8 @@ def main() -> int:
             m["target"].parent.mkdir(parents=True, exist_ok=True)
             produced.rename(m["target"])
             relocated += 1
+            s = m["sample"]
+            log_mp4(args.model_name, s["perspective"], s["test_type"], s["gt_name"], m["target"])
         else:
             missing.append(f"{m['stem']} -> {produced.name}")
 

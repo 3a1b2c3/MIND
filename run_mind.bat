@@ -30,6 +30,26 @@ set "VIRTUAL_ENV_PROMPT="
 set "UV_PYTHON="
 set "UV_PROJECT_ENVIRONMENT="
 
+:: action metric runs ViPE, which JIT-compiles a CUDA C++ extension on first
+:: call. That needs (a) cl.exe on PATH (MSVC) and (b) CUDA_HOME pointing at
+:: the toolkit install. Set both up here so process.py doesn't crash on
+:: `vipe infer ... --pipeline default`.
+if not defined CUDA_HOME (
+    if exist "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.8" (
+        set "CUDA_HOME=C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.8"
+    ) else if exist "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v13.0" (
+        set "CUDA_HOME=C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v13.0"
+    )
+)
+:: Bring in MSVC's cl.exe + INCLUDE/LIB. vcvars64.bat appends to PATH; idempotent
+:: enough to re-run, but we check VSINSTALLDIR to avoid double-init noise.
+if not defined VSINSTALLDIR (
+    if exist "C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvars64.bat" (
+        call "C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvars64.bat" >nul
+    )
+)
+if defined CUDA_HOME set "PATH=%CUDA_HOME%\bin;%PATH%"
+
 set PY=%~dp0.venv\Scripts\python.exe
 set GT_ROOT=C:\workspace\world\MIND-Data
 set MIND_TESTS=C:\workspace\world\MIND-tests

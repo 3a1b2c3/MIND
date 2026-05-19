@@ -41,6 +41,8 @@ from pathlib import Path
 
 import av
 
+from utils.stats_logger import log_mp4
+
 LINGBOT_REPO = Path(r"C:\workspace\world\lingbot-world")
 LINGBOT_GENERATE = LINGBOT_REPO / "generate.py"
 LINGBOT_VENV_PY = LINGBOT_REPO / ".venv" / "Scripts" / "python.exe"
@@ -157,6 +159,8 @@ def run_one(sample: dict, test_root: Path, model_name: str, work_dir: Path,
     rc = subprocess.call(cmd, cwd=str(LINGBOT_REPO), env=env)
     elapsed = time.perf_counter() - t0
     print(f"  rc={rc}  elapsed={elapsed:.1f}s")
+    if rc == 0 and out.exists():
+        log_mp4(model_name, sample["perspective"], sample["test_type"], sample["gt_name"], out)
     return rc
 
 

@@ -29,6 +29,8 @@ import av
 import psutil
 from PIL import Image
 
+from utils.stats_logger import log_mp4
+
 MATRIX3_REPO = Path(r"C:\workspace\world\matrix3\Matrix-Game-3")
 MATRIX3_GENERATE = MATRIX3_REPO / "generate.py"
 MATRIX3_CKPT_DIR = "Matrix-Game-3.0"
@@ -147,6 +149,8 @@ def run_one(sample: dict, test_root: Path, model_name: str, work_dir: Path, dry_
     rc = subprocess.call(cmd, cwd=str(MATRIX3_REPO), env=env)
     elapsed = time.perf_counter() - t0
     print(f"  rc={rc}  elapsed={elapsed:.1f}s")
+    if rc == 0 and out.exists():
+        log_mp4(model_name, sample["perspective"], sample["test_type"], sample["gt_name"], out)
     return rc
 
 

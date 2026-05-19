@@ -29,6 +29,8 @@ from pathlib import Path
 
 import av
 
+from utils.stats_logger import log_mp4
+
 TEST_TYPES = ("action_space_test", "mem_test")
 PERSPECTIVES = ("1st_data", "3rd_data")
 
@@ -245,6 +247,8 @@ def main() -> int:
             m["target"].parent.mkdir(parents=True, exist_ok=True)
             produced.replace(m["target"])
             relocated += 1
+            s = m["sample"]
+            log_mp4(args.model_name, s["perspective"], s["test_type"], s["gt_name"], m["target"])
         else:
             missing.append(f"{m['stem']} -> {expected_name}")
 
