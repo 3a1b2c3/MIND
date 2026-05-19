@@ -21,6 +21,21 @@ cd /d "%~dp0"
 set PYTHONIOENCODING=utf-8
 set PYTHONUNBUFFERED=1
 
+:: Pin triton-windows to CUDA 12.8 toolkit (matches cu128 torch wheels). With
+:: v13.0 also installed, triton's JIT otherwise picks v13.0 via CUDA_PATH and
+:: fails to link kernels against the cu128-built torch ABI.
+set "CUDA_PATH=C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.8"
+set "CUDA_HOME=C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.8"
+set "PATH=C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.8\bin;%PATH%"
+
+:: Disable torch.compile/dynamo — triton-windows + inductor on Windows is flaky.
+set TORCHDYNAMO_DISABLE=1
+
+:: Keep huggingface_hub from re-checking HF for tokenizer/model updates on every
+:: run; rely on local cache. Stops corp-proxy stalls during AutoTokenizer.from_pretrained.
+set HF_HUB_OFFLINE=1
+set TRANSFORMERS_OFFLINE=1
+
 set PY=%~dp0.venv\Scripts\python.exe
 set GT_ROOT=C:\workspace\world\MIND-Data
 set MIND_TESTS=C:\workspace\world\MIND-tests

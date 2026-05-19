@@ -1,27 +1,35 @@
 """Drive SANA-WM_bidirectional from MIND-Data into the MIND test layout.
 
-Walks MIND-Data/{1st_data,3rd_data}/test/{action_space_test,mem_test}/<gt_name>/
-and, for each sample whose target video.mp4 isn't already staged:
-  1. Extracts the first frame from video.mp4 -> a unique PNG in <work_dir>.
-  2. Writes one line to a shared prompts.txt in Sana's I2V format:
-        <caption><image>/path/to/frame.png
+Per-sample CLI invocation of Sana's inference_sana_wm.py (the SANA-WM_bidirectional
+entry point — NOT the older inference_sana_video.py which uses an incompatible
+pyrallis-based parser). Mirrors the working pattern in Sana\\test_sana_wm.bat.
 
-Then calls inference_video_scripts/inference_sana_video.py ONCE with that
-prompts.txt. The 1600M DiT + LTX2VAE + gemma-2-2b-it loads only once.
+For each (perspective, test_type, gt_name) sample we:
+  1. Extract the first frame of video.mp4 -> a unique PNG in <work_dir>.
+  2. Write the caption to a per-sample prompt .txt.
+  3. Map MIND action.json's per-frame ws/ad/ud/lr ticks to Sana's action DSL
+     (keys from wasdijkl, segments grouped by consecutive same-key-set frames).
+  4. Copy Sana's demo_0_intrinsics.npy as the per-sample intrinsics (MIND has
+     no real intrinsics — this is an approximation; same intrinsics for every
+     sample is fine for first-pass eval).
+  5. Spawn inference_sana_wm.py with --image / --prompt / --action / --intrinsics
+     and the SANA-WM_bidirectional model + refiner paths.
+  6. Relocate the produced mp4 to test_root/<model_name>/<perspective>/<test_type>/<gt_name>/video.mp4.
 
-After inference, walks Sana's save_root for "<global_idx>. <key>.mp4" files
-and relocates each to test_root/<model_name>/<perspective>/<test_type>/<gt_name>/video.mp4.
+MIND action -> Sana DSL key map (one held-key set per frame, then grouped):
+    ws=0 -> 'w' (forward)        ad=0 -> 'a' (left)
+    ws=1 -> 's' (backward)       ad=1 -> 'd' (right)                ad=2 -> -
+    ud=0 -> 'i' (pitch up)       lr=0 -> 'j' (yaw left)
+    ud=1 -> 'k' (pitch down)     lr=1 -> 'l' (yaw right)
+    ud=2 -> -                    lr=2 -> -
 
-CAVEAT — this driver does NOT yet feed MIND action.json as a camera trajectory.
-SANA-WM_bidirectional is a CamCtrl model (Plucker embeddings, BidirectionalGDN);
-the generated videos will be first-frame-anchored I2V samples that ignore the
-MIND action timeline. Wiring action.json -> Plucker poses is a follow-up.
+Skip-if-exists: samples whose output mp4 already exists are skipped.
 """
 
 import argparse
-import hashlib
 import json
 import os
+import shutil
 import subprocess
 import sys
 import time
@@ -32,17 +40,18 @@ import av
 from utils.stats_logger import log_mp4
 
 TEST_TYPES = ("action_space_test", "mem_test")
-PERSPECTIVES = ("1st_data", "3rd_data")
+# 3rd_data first so the default (no --perspective filter) drives 3rd-person samples
+# before 1st-person — SANA-WM_bidirectional is more naturally evaluated 3rd-first.
+PERSPECTIVES = ("3rd_data", "1st_data")
 
-# Defaults matched to SANA-WM_bidirectional/config.yaml (720p, image_size=720,
-# DiT=SanaMSVideoCamCtrl_1600M_P1_D20, vae=LTX2VAE_diffusers).
-DEFAULT_NUM_FRAMES = 121
-DEFAULT_HEIGHT = 720
-DEFAULT_WIDTH = 1280
-DEFAULT_STEPS = 50
-DEFAULT_CFG_SCALE = 6.0
+DEFAULT_NUM_FRAMES = 81
+DEFAULT_FPS = 16
+DEFAULT_STEPS = 20
+DEFAULT_CFG_SCALE = 5.0
+DEFAULT_FLOW_SHIFT = 8.0
+DEFAULT_TRANSLATION_SPEED = 0.055
+DEFAULT_ROTATION_SPEED_DEG = 1.2
 DEFAULT_SEED = 42
-DEFAULT_CONFIG_REL = "configs/sana_video_config/Sana_2000M_720px_ltx2vae_AdamW_fsdp.yaml"
 
 
 def extract_first_frame(video_path: Path, out_path: Path) -> None:
@@ -93,53 +102,116 @@ def caption_for(sample: dict) -> str:
     return "Third-person view of a character exploring a 3D virtual environment."
 
 
-def sana_key(prompt_line: str) -> str:
-    # Mirror DistributePromptsDataset (inference_sana_video.py L91-94):
-    #   key = prompt[:50].split("/")[0] + sha256(prompt)[:10]
-    return prompt_line[:50].split("/")[0] + hashlib.sha256(prompt_line.encode()).hexdigest()[:10]
+def mind_action_to_sana_dsl(action_json_path: Path, num_frames: int) -> str:
+    """Map MIND action.json's per-frame ticks to Sana's '<keys>-<duration>' DSL.
+
+    Reads at most `num_frames` entries from action.json['data'], converts each
+    to a held-key set under the Sana grammar, then groups runs of identical
+    held-key sets into segments. Idle frames (no keys held) become 'none-<n>'.
+    """
+    with open(action_json_path, encoding="utf-8") as f:
+        action_data = json.load(f)
+    entries = action_data.get("data", [])[:num_frames]
+    if not entries:
+        return f"none-{num_frames}"
+
+    per_frame_keys: list[frozenset] = []
+    for e in entries:
+        held: set[str] = set()
+        ws = e.get("ws")
+        if ws == 0:
+            held.add("w")
+        elif ws == 1:
+            held.add("s")
+        ad = e.get("ad")
+        if ad == 0:
+            held.add("a")
+        elif ad == 1:
+            held.add("d")
+        ud = e.get("ud")
+        if ud == 0:
+            held.add("i")
+        elif ud == 1:
+            held.add("k")
+        lr = e.get("lr")
+        if lr == 0:
+            held.add("j")
+        elif lr == 1:
+            held.add("l")
+        per_frame_keys.append(frozenset(held))
+
+    # Pad to num_frames with the last seen key set so the segment count matches.
+    while len(per_frame_keys) < num_frames:
+        per_frame_keys.append(per_frame_keys[-1])
+
+    segments: list[str] = []
+    run_keys = per_frame_keys[0]
+    run_len = 1
+    for keys in per_frame_keys[1:]:
+        if keys == run_keys:
+            run_len += 1
+        else:
+            token = "none" if not run_keys else "".join(sorted(run_keys))
+            segments.append(f"{token}-{run_len}")
+            run_keys = keys
+            run_len = 1
+    token = "none" if not run_keys else "".join(sorted(run_keys))
+    segments.append(f"{token}-{run_len}")
+    return ",".join(segments)
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--gt-root",    type=Path, required=True, help="MIND-Data root")
-    parser.add_argument("--test-root",  type=Path, required=True, help="Where to put generated test videos")
+    parser.add_argument("--gt-root", type=Path, required=True, help="MIND-Data root")
+    parser.add_argument("--test-root", type=Path, required=True, help="Where to put generated test videos")
     parser.add_argument("--model-name", default="sana-wm", help="Subfolder name under test-root")
-    parser.add_argument("--sana-repo",  type=Path, required=True, help="Path to Sana checkout")
-    parser.add_argument("--sana-py",    type=Path, required=True, help="Sana .venv python.exe")
-    parser.add_argument("--sana-model-path", type=Path, default=None,
+    parser.add_argument("--sana-repo", type=Path, required=True, help="Path to Sana checkout")
+    parser.add_argument("--sana-py", type=Path, required=True, help="Sana .venv-wm python.exe")
+    parser.add_argument("--sana-model-dir", type=Path, default=None,
                         help="SANA-WM_bidirectional model dir (default: <sana-repo>/output/pretrained_models/SANA-WM_bidirectional)")
-    parser.add_argument("--sana-config", type=Path, default=None,
-                        help=f"Sana config yaml (default: <sana-repo>/{DEFAULT_CONFIG_REL})")
-    parser.add_argument("--work-dir",   type=Path, default=None, help="Temp dir for first frames + prompts.txt (default: <test-root>/.sana_frames)")
-    parser.add_argument("--only",       nargs="+", help="Only run samples whose gt_name contains any of these substrings")
+    parser.add_argument("--intrinsics", type=Path, default=None,
+                        help="Per-sample intrinsics .npy (default: <sana-repo>/asset/sana_wm/demo_0_intrinsics.npy)")
+    parser.add_argument("--work-dir", type=Path, default=None,
+                        help="Temp dir for first frames + prompts (default: <test-root>/.sana_wm_work)")
+    parser.add_argument("--only", nargs="+", help="Only run samples whose gt_name contains any of these substrings")
     parser.add_argument("--perspective", choices=PERSPECTIVES, help="Limit to one perspective")
-    parser.add_argument("--test-type",   choices=TEST_TYPES, help="Limit to one test type")
-    parser.add_argument("--limit",       type=int, help="Only run first N matched samples")
-    parser.add_argument("--dry-run",     action="store_true")
-    parser.add_argument("--fps",            type=int,   default=24)
-    parser.add_argument("--num-frames",     type=int,   default=DEFAULT_NUM_FRAMES)
-    parser.add_argument("--height",         type=int,   default=DEFAULT_HEIGHT)
-    parser.add_argument("--width",          type=int,   default=DEFAULT_WIDTH)
-    parser.add_argument("--steps",          type=int,   default=DEFAULT_STEPS)
-    parser.add_argument("--cfg-scale",      type=float, default=DEFAULT_CFG_SCALE)
-    parser.add_argument("--seed",           type=int,   default=DEFAULT_SEED)
+    parser.add_argument("--test-type", choices=TEST_TYPES, help="Limit to one test type")
+    parser.add_argument("--limit", type=int, help="Only run first N matched samples")
+    parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--fps", type=int, default=DEFAULT_FPS)
+    parser.add_argument("--num-frames", type=int, default=DEFAULT_NUM_FRAMES)
+    parser.add_argument("--steps", type=int, default=DEFAULT_STEPS)
+    parser.add_argument("--cfg-scale", type=float, default=DEFAULT_CFG_SCALE)
+    parser.add_argument("--flow-shift", type=float, default=DEFAULT_FLOW_SHIFT)
+    parser.add_argument("--translation-speed", type=float, default=DEFAULT_TRANSLATION_SPEED)
+    parser.add_argument("--rotation-speed-deg", type=float, default=DEFAULT_ROTATION_SPEED_DEG)
+    parser.add_argument("--seed", type=int, default=DEFAULT_SEED)
+    parser.add_argument("--with-refiner", action="store_true",
+                        help="Run the refiner pass too (off by default — matches test_sana_wm.bat's --no_refiner).")
     args = parser.parse_args()
 
-    sana_model_path = args.sana_model_path or (args.sana_repo / "output" / "pretrained_models" / "SANA-WM_bidirectional")
-    sana_config = args.sana_config or (args.sana_repo / DEFAULT_CONFIG_REL)
-    sana_entry = args.sana_repo / "inference_video_scripts" / "inference_sana_video.py"
+    sana_model_dir = args.sana_model_dir or (args.sana_repo / "output" / "pretrained_models" / "SANA-WM_bidirectional")
+    sana_entry = args.sana_repo / "inference_video_scripts" / "inference_sana_wm.py"
+    sana_config = sana_model_dir / "config.yaml"
+    sana_dit = sana_model_dir / "dit" / "sana_wm_1600m_720p.safetensors"
+    sana_refiner_ckpt = sana_model_dir / "refiner" / "refiner.safetensors"
+    sana_refiner_text_encoder = sana_model_dir / "refiner" / "text_encoder"
+    intrinsics_path = args.intrinsics or (args.sana_repo / "asset" / "sana_wm" / "demo_0_intrinsics.npy")
 
     for path, label in [
-        (sana_entry, "Sana entry"),
-        (sana_config, "Sana config"),
-        (args.sana_py, "Sana python"),
-        (sana_model_path, "SANA-WM model dir"),
+        (sana_entry, "inference_sana_wm.py"),
+        (sana_config, "SANA-WM config.yaml"),
+        (sana_dit, "SANA-WM DiT weights"),
+        (sana_refiner_ckpt, "SANA-WM refiner weights"),
+        (sana_refiner_text_encoder, "SANA-WM refiner text_encoder dir"),
+        (args.sana_py, "Sana .venv-wm python.exe"),
+        (intrinsics_path, "intrinsics .npy"),
     ]:
         if not path.exists() and not args.dry_run:
             print(f"FATAL: {label} not found: {path}", file=sys.stderr)
             return 2
 
-    work_dir = args.work_dir or (args.test_root / ".sana_frames")
+    work_dir = args.work_dir or (args.test_root / ".sana_wm_work")
     work_dir.mkdir(parents=True, exist_ok=True)
 
     samples = gather_samples(args.gt_root)
@@ -156,109 +228,104 @@ def main() -> int:
         print("No samples matched.")
         return 1
 
-    pending_lines: list[str] = []
-    pending_meta: list[dict] = []
+    pending: list[dict] = []
     skipped = 0
     for s in samples:
         target = output_path(args.test_root, args.model_name, s)
         if target.exists():
             skipped += 1
             continue
-        stem = unique_stem(s)
-        frame_png = work_dir / f"{stem}.png"
-        if not frame_png.exists():
-            extract_first_frame(s["video"], frame_png)
-        prompt = caption_for(s)
-        # Sana I2V format: "<caption><image>/abs/path/to/frame.png"
-        line = f"{prompt}<image>{str(frame_png).replace(os.sep, '/')}"
-        pending_lines.append(line)
-        pending_meta.append({
-            "sample": s,
-            "stem": stem,
-            "frame_png": frame_png,
-            "target": target,
-            "key": sana_key(line),
-            "global_idx": len(pending_meta),
-        })
+        pending.append({"sample": s, "target": target})
 
-    print(f"Will process {len(pending_lines)} sample(s) (skipped {skipped} already-staged):")
-    for m in pending_meta:
-        s = m["sample"]
-        print(f"  - {s['perspective']}/{s['test_type']}/{s['gt_name']}  key={m['key']}")
-    print()
-    if not pending_lines:
+    print(f"Will process {len(pending)} sample(s) (skipped {skipped} already-staged).")
+    if not pending:
         print("Nothing to do.")
         return 0
 
-    txt_file = work_dir / "prompts.txt"
-    with open(txt_file, "w", encoding="utf-8") as f:
-        f.write("\n".join(pending_lines) + "\n")
-    print(f"Sana prompts -> {txt_file}\n")
-
-    cmd = [
-        str(args.sana_py), str(sana_entry),
-        "--config",               str(sana_config),
-        "--model_path",           str(sana_model_path),
-        "--txt_file",             str(txt_file),
-        "--dataset",              "mind_eval",
-        "--custom_height_width",  str(args.height), str(args.width),
-        "--num_frames",           str(args.num_frames),
-        "--fps",                  str(args.fps),
-        "--cfg_scale",            str(args.cfg_scale),
-        "--step",                 str(args.steps),
-        "--seed",                 str(args.seed),
-    ]
-    print("Inference cmd:\n  " + " ".join(cmd) + "\n")
-    print("NOTE: SANA-WM is a camera-controlled world model. This driver passes only")
-    print("first-frame + caption. MIND action.json -> camera trajectory wiring is TODO;")
-    print("output videos will not follow MIND-specified motion.\n")
-
-    if args.dry_run:
-        print("[dry-run] not invoking inference.")
-        return 0
-
+    # Env mirrors Sana\test_sana_wm.bat: pin CUDA_PATH to v12.8 so triton picks
+    # the cu128 toolkit (not v13 if also installed), disable dynamo (triton-windows
+    # lacks triton_key so @torch.compile breaks), and stay offline once cached.
     env = os.environ.copy()
-    # Strip cross-venv pollution (host VIRTUAL_ENV / PYTHONPATH may point at MIND's env).
     for k in ("PYTHONHOME", "PYTHONPATH", "PYTHONSTARTUP", "PYTHONNOUSERSITE",
               "VIRTUAL_ENV", "VIRTUAL_ENV_PROMPT", "UV_PYTHON", "UV_PROJECT_ENVIRONMENT"):
         env.pop(k, None)
+    cuda_root = r"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.8"
+    env["CUDA_PATH"] = cuda_root
+    env["CUDA_HOME"] = cuda_root
+    env["PATH"] = f"{cuda_root}\\bin;" + env.get("PATH", "")
     env["PYTHONIOENCODING"] = "utf-8"
-    env["CUDA_VISIBLE_DEVICES"] = os.environ.get("CUDA_VISIBLE_DEVICES", "0")
-    env["PYTHONPATH"] = str(args.sana_repo)
-    env["VIRTUAL_ENV"] = str(args.sana_repo / ".venv")
     env["TOKENIZERS_PARALLELISM"] = "false"
-    env["DISABLE_XFORMERS"] = "1"
+    env["TORCHDYNAMO_DISABLE"] = "1"
+    env["HF_HUB_OFFLINE"] = "1"
+    env["TRANSFORMERS_OFFLINE"] = "1"
 
-    t0 = time.perf_counter()
-    rc = subprocess.call(cmd, cwd=str(args.sana_repo), env=env)
-    elapsed = time.perf_counter() - t0
-    print(f"\nInference rc={rc}  elapsed={elapsed:.1f}s  ({elapsed/max(1,len(pending_lines)):.1f}s/sample amortized)\n")
+    failures: list[str] = []
+    for i, m in enumerate(pending, 1):
+        s = m["sample"]
+        stem = unique_stem(s)
+        frame_png = work_dir / f"{stem}.png"
+        prompt_txt = work_dir / f"{stem}.txt"
 
-    # Locate produced mp4s. Sana writes to <save_root>/{global_idx}. {key}.mp4.
-    # save_root is derived from config + add_label + dataset inside the script; we can't
-    # easily predict the path, so search the Sana repo's output tree for our keys.
-    sana_output_root = args.sana_repo / "output"
-    relocated = 0
-    missing: list[str] = []
-    for m in pending_meta:
-        expected_name = f"{m['global_idx']}. {m['key']}.mp4"
-        produced = next(sana_output_root.rglob(expected_name), None) if sana_output_root.exists() else None
-        if produced and produced.exists():
-            m["target"].parent.mkdir(parents=True, exist_ok=True)
-            produced.replace(m["target"])
-            relocated += 1
-            s = m["sample"]
-            log_mp4(args.model_name, s["perspective"], s["test_type"], s["gt_name"], m["target"])
+        if not frame_png.exists():
+            extract_first_frame(s["video"], frame_png)
+        prompt_txt.write_text(caption_for(s), encoding="utf-8")
+        action_dsl = mind_action_to_sana_dsl(s["action"], args.num_frames)
+
+        target = m["target"]
+        target.parent.mkdir(parents=True, exist_ok=True)
+        out_name = "video"  # inference_sana_wm.py writes <output_dir>/<name>.mp4
+
+        cmd = [
+            str(args.sana_py), str(sana_entry),
+            "--image", str(frame_png),
+            "--prompt", str(prompt_txt),
+            "--action", action_dsl,
+            "--translation_speed", str(args.translation_speed),
+            "--rotation_speed_deg", str(args.rotation_speed_deg),
+            "--intrinsics", str(intrinsics_path),
+            "--output_dir", str(target.parent),
+            "--name", out_name,
+            "--num_frames", str(args.num_frames),
+            "--fps", str(args.fps),
+            "--step", str(args.steps),
+            "--cfg_scale", str(args.cfg_scale),
+            "--flow_shift", str(args.flow_shift),
+            "--seed", str(args.seed),
+            "--config", str(sana_config),
+            "--model_path", str(sana_dit),
+            "--refiner_checkpoint", str(sana_refiner_ckpt),
+            "--refiner_gemma_root", str(sana_refiner_text_encoder),
+        ]
+        if not args.with_refiner:
+            cmd.append("--no_refiner")
+
+        action_preview = action_dsl[:80] + ("..." if len(action_dsl) > 80 else "")
+        print(f"\n[{i}/{len(pending)}] {s['perspective']}/{s['test_type']}/{s['gt_name']}")
+        print(f"  action: {action_preview}")
+        print(f"  out:    {target}")
+
+        if args.dry_run:
+            print("  [dry-run] " + " ".join(cmd))
+            continue
+
+        t0 = time.perf_counter()
+        rc = subprocess.call(cmd, cwd=str(args.sana_repo), env=env)
+        elapsed = time.perf_counter() - t0
+        print(f"  rc={rc}  elapsed={elapsed:.1f}s")
+
+        if rc == 0 and target.exists():
+            log_mp4(args.model_name, s["perspective"], s["test_type"], s["gt_name"], target)
         else:
-            missing.append(f"{m['stem']} -> {expected_name}")
+            failures.append(f"{stem} (rc={rc})")
 
-    print(f"Relocated {relocated}/{len(pending_meta)} mp4(s) into MIND-tests layout.")
-    if missing:
-        print(f"MISSING ({len(missing)}):")
-        for name in missing:
-            print(f"  {name}")
+    print()
+    if failures:
+        print(f"FAILED ({len(failures)}):")
+        for n in failures:
+            print(f"  {n}")
         return 1
-    return rc
+    print(f"Done. {len(pending)} sample(s) produced.")
+    return 0
 
 
 if __name__ == "__main__":
