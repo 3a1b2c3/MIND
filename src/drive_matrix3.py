@@ -32,7 +32,9 @@ from PIL import Image
 MATRIX3_REPO = Path(r"C:\workspace\world\matrix3\Matrix-Game-3")
 MATRIX3_GENERATE = MATRIX3_REPO / "generate.py"
 MATRIX3_CKPT_DIR = "Matrix-Game-3.0"
-MATRIX3_VENV_PY = Path(r"C:\workspace\world\DeepVerse\.venv\Scripts\python.exe")
+# Override via MATRIX3_VENV_PY env var when the DeepVerse-shared venv is missing
+# (e.g. reuse the MIND scoring venv if its torch stack is compatible).
+MATRIX3_VENV_PY = Path(os.environ.get("MATRIX3_VENV_PY", r"C:\workspace\world\DeepVerse\.venv\Scripts\python.exe"))
 
 TEST_TYPES = ("action_space_test", "mem_test")
 PERSPECTIVES = ("1st_data", "3rd_data")

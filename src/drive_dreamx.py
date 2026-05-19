@@ -28,7 +28,9 @@ from pathlib import Path
 import av
 
 DREAMX_REPO = Path(r"C:\workspace\world\DreamX-World")
-DREAMX_VENV_PY = DREAMX_REPO / ".venv" / "Scripts" / "python.exe"
+# Override via DREAMX_VENV_PY env var when DreamX-World's own .venv is missing
+# (e.g. share the MIND scoring venv if its torch stack is compatible).
+DREAMX_VENV_PY = Path(os.environ.get("DREAMX_VENV_PY", str(DREAMX_REPO / ".venv" / "Scripts" / "python.exe")))
 DREAMX_INFER = DREAMX_REPO / "inference_dreamx5b.py"
 DREAMX_CONFIG = DREAMX_REPO / "configs" / "wan2.2" / "wan_ti2v_5b.yaml"
 DREAMX_WAN = DREAMX_REPO / "Wan2.2-TI2V-5B"

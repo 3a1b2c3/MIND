@@ -26,6 +26,11 @@ set MIND_TESTS=C:\workspace\world\MIND-tests
 set MODEL_NAME=dreamx-world_small
 set LOG=%~dp0drive_dreamx_small.log
 
+:: DreamX-World's own .venv is missing on this box; reuse MIND's venv as the
+:: cross-spawned inference interpreter. Override DREAMX_VENV_PY beforehand
+:: to point elsewhere if you have a dedicated DreamX-World venv.
+if not defined DREAMX_VENV_PY set DREAMX_VENV_PY=%PY%
+
 if not exist "%PY%" (
     echo ERROR: venv python not found: %PY%
     exit /b 2
