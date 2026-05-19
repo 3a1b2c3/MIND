@@ -1,5 +1,5 @@
 @echo off
-:: Stage LingBot-World-Fast videos into MIND-tests\lingbot-fast\ for run_mind.bat scoring.
+:: Stage LingBot-World base-cam-nf4 videos into MIND-tests\lingbot-base-cam-nf4\ for run_mind.bat scoring.
 ::
 :: Uses lingbot-world's generate.py with the MIND action.json passed through
 :: --action_path, so per-frame WASD/ud/lr conditioning flows end-to-end. That
@@ -39,8 +39,8 @@ set TRANSFORMERS_OFFLINE=1
 set PY=%~dp0.venv\Scripts\python.exe
 set GT_ROOT=C:\workspace\world\MIND-Data
 set MIND_TESTS=C:\workspace\world\MIND-tests
-set MODEL_NAME=lingbot-fast
-set CKPT_DIR=C:\workspace\world\lingbot-world\fast
+set MODEL_NAME=lingbot-base-cam-nf4
+set CKPT_DIR=C:\workspace\world\lingbot-world\base-cam-nf4
 set LOG=%~dp0drive_lingbot.log
 
 :: lingbot fps is set via wan/configs/shared_config.py (sample_fps=24 patched in).
