@@ -37,8 +37,8 @@ set HF_HUB_OFFLINE=1
 set TRANSFORMERS_OFFLINE=1
 
 set PY=%~dp0.venv\Scripts\python.exe
-set GT_ROOT=C:\workspace\world\MIND-Data
-set MIND_TESTS=C:\workspace\world\MIND-tests
+if not defined GT_ROOT    set GT_ROOT=C:\workspace\world\MIND-Data
+if not defined MIND_TESTS set MIND_TESTS=C:\workspace\world\MIND-tests
 set MODEL_NAME=lingbot-base-cam-nf4
 set CKPT_DIR=C:\workspace\world\lingbot-world\base-cam-nf4
 set LOG=%~dp0drive_lingbot.log

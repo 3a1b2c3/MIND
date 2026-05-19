@@ -41,7 +41,10 @@ echo   deepverse    : %DEEPVERSE_REPO%
 echo   log          : %LOG%
 echo ============================================================
 
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0run_dreamx.ps1" "%LOG%" "%PY%" "src\drive_deepverse.py" "--gt-root" "%GT_ROOT%" "--test-root" "%MIND_TESTS%" "--model-name" "%MODEL_NAME%" "--deepverse-repo" "%DEEPVERSE_REPO%" "--fps" "%MIND_FPS%" "--perspective" "1st_data" %*
+:: drive_deepverse.py PERSPECTIVES tuple now defaults to ("3rd_data","1st_data"),
+:: so omitting --perspective walks both with 3rd-person first. Pass --perspective
+:: <p> on the CLI to restrict to one. CLI args after %* override the defaults.
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0run_dreamx.ps1" "%LOG%" "%PY%" "src\drive_deepverse.py" "--gt-root" "%GT_ROOT%" "--test-root" "%MIND_TESTS%" "--model-name" "%MODEL_NAME%" "--deepverse-repo" "%DEEPVERSE_REPO%" "--fps" "%MIND_FPS%" %*
 
 set EXIT_CODE=%ERRORLEVEL%
 if not %EXIT_CODE%==0 ( echo. & echo ERROR: drive_deepverse.py exited with %EXIT_CODE% & exit /b %EXIT_CODE% )
@@ -50,5 +53,6 @@ echo.
 echo ============================================================
 echo Generation done. Running scoring: run_mind.bat %MODEL_NAME%
 echo ============================================================
-call "%~dp0run_mind.bat" "%MODEL_NAME%"
+if not defined MIND_METRICS set MIND_METRICS=lcm,visual,dino,action,gsc
+call "%~dp0run_mind.bat" "%MODEL_NAME%" "%MIND_METRICS%"
 exit /b %ERRORLEVEL%
