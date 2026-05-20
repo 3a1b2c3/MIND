@@ -60,5 +60,6 @@ echo Generation done. Running scoring: run_mind.bat %MODEL_NAME%
 echo ============================================================
 :: gsc requires per-gt_name mirror_test mp4s; override via MIND_METRICS env to subset.
 if not defined MIND_METRICS set MIND_METRICS=lcm,visual,dino,action,gsc
+if "%MIND_METRICS%"=="" set MIND_METRICS=lcm,visual,dino,action,gsc
 call "%~dp0run_mind.bat" "%MODEL_NAME%" "%MIND_METRICS%"
 exit /b %ERRORLEVEL%

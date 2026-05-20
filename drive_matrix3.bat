@@ -57,7 +57,9 @@ echo ============================================================
 
 :: --perspective 1st_data: only stage first-person samples. Override with an
 :: extra `--perspective 3rd_data` arg (argparse last-wins).
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0run_dreamx.ps1" "%LOG%" "%PY%" "src\drive_matrix3.py" "--gt-root" "%GT_ROOT%" "--test-root" "%MIND_TESTS%" "--fps" "%MIND_FPS%" "--perspective" "1st_data" %*
+:: MIND_START_INDEX: skip first N matched samples (resume mid-run). Default 0.
+if not defined MIND_START_INDEX set MIND_START_INDEX=0
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0run_dreamx.ps1" "%LOG%" "%PY%" "src\drive_matrix3.py" "--gt-root" "%GT_ROOT%" "--test-root" "%MIND_TESTS%" "--fps" "%MIND_FPS%" "--perspective" "1st_data" "--start-index" "%MIND_START_INDEX%" %*
 
 set EXIT_CODE=%ERRORLEVEL%
 if not %EXIT_CODE%==0 (
@@ -68,6 +70,7 @@ if not %EXIT_CODE%==0 (
 
 if not defined MIND_PERSON  set MIND_PERSON=1st
 if not defined MIND_METRICS set MIND_METRICS=lcm,visual,dino,action,gsc
+if "%MIND_METRICS%"=="" set MIND_METRICS=lcm,visual,dino,action,gsc
 if not defined MIND_GPUS    set MIND_GPUS=1
 
 echo.

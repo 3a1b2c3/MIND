@@ -40,5 +40,6 @@ if not %EXIT_CODE%==0 ( exit /b %EXIT_CODE% )
 :: rows in the result JSON will be empty until that's wired in. Override by
 :: setting MIND_METRICS before calling this bat.
 if not defined MIND_METRICS set MIND_METRICS=lcm,visual,dino,action,gsc
+if "%MIND_METRICS%"=="" set MIND_METRICS=lcm,visual,dino,action,gsc
 call "%~dp0run_mind.bat" "%MODEL_NAME%" "%MIND_METRICS%"
 exit /b %ERRORLEVEL%

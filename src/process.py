@@ -1,3 +1,18 @@
+import os as _os
+
+# Suppress noisy libavcodec stderr ("get_buffer() failed", "Error splitting the
+# input into NAL units", "no frame!", etc.) emitted by PyAV during H.264 header
+# probing. These are recoverable and PyAV retries internally — the warnings
+# drown the actual progress bar / per-sample log lines.
+_os.environ.setdefault("AV_LOG_FORCE_NOCOLOR", "1")
+_os.environ.setdefault("AV_LOG_LEVEL", "fatal")  # libav env-level override
+try:
+    import av as _av  # noqa: E402
+    # av.logging.FATAL drops everything except FATAL+; ERROR keeps real errors visible.
+    _av.logging.set_level(_av.logging.FATAL)
+except Exception:
+    pass
+
 import lpips
 import torch
 from pyiqa.archs.musiq_arch import MUSIQ
@@ -93,11 +108,15 @@ def compute_metrics_single_gpu(task_queue, result_list, gt_root, test_root, dino
                         sample_frames = get_video_length(os.path.join(test_dir, data_path, video))
                         vid_result['mark_time'] = sample_frames // 2
                         vid_result['sample_frames'] = sample_frames
-                        if sample_frames%2 == 1:
-                            vid_result['error'] = 'frame count is not an even number!'
-                            tqdm.write(f"{prefix}: Task failed because frame count is not an even number!")
-                            result['video_results'].append(vid_result)
-                            continue
+                        # Odd frame counts (e.g. dreamx-small's 121-frame default) used to fail
+                        # the gsc split. Drop the last frame so it's even and split cleanly —
+                        # the gsc metric is symmetry-around-midpoint, dropping the final frame
+                        # is harmless.
+                        if sample_frames % 2 == 1:
+                            tqdm.write(f"{prefix}: odd frame count {sample_frames}, truncating last frame for gsc split")
+                            sample_frames -= 1
+                            vid_result['sample_frames'] = sample_frames
+                            vid_result['mark_time'] = sample_frames // 2
 
                         tqdm.write(f"{prefix}: [1/2] Reading videos...")
                         sample_reader = VideoStreamReader(os.path.join(test_dir, data_path, video), start_frame=0, total_frames=sample_frames)

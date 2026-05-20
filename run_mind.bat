@@ -60,7 +60,10 @@ set NUM_GPUS=%~3
 set PERSON=%~4
 
 if not defined TEST_SUBDIR set TEST_SUBDIR=matrix-game-3
+:: Default METRICS to all 5 if missing OR explicitly empty (passing "" still
+:: defines METRICS=<empty>, which would skip the `if not defined` guard).
 if not defined METRICS set METRICS=lcm,visual,dino,action,gsc
+if "%METRICS%"=="" set METRICS=lcm,visual,dino,action,gsc
 if not defined NUM_GPUS set NUM_GPUS=1
 :: 4th positional defaults to "1st" — driver bats (drive_dreamx, drive_lingbot,
 :: drive_matrix3) all generate 1st_data only. Override with "3rd" or "both".
