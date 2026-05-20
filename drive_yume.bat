@@ -24,5 +24,7 @@ echo === YUME staging into MIND-tests  ^|  model=%MODEL_NAME% ===
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0run_dreamx.ps1" "%LOG%" "%PY%" "src\drive_yume.py" "--gt-root" "%GT_ROOT%" "--test-root" "%MIND_TESTS%" "--model-name" "%MODEL_NAME%" "--repo" "%YUME_REPO%" "--py" "%YUME_PY%" "--fps" "%MIND_FPS%" "--perspective" "1st_data" %*
 set EXIT_CODE=%ERRORLEVEL%
 if not %EXIT_CODE%==0 ( exit /b %EXIT_CODE% )
-call "%~dp0run_mind.bat" "%MODEL_NAME%"
+:: gsc requires per-gt_name mirror_test mp4s; override via MIND_METRICS env to subset.
+if not defined MIND_METRICS set MIND_METRICS=lcm,visual,dino,action,gsc
+call "%~dp0run_mind.bat" "%MODEL_NAME%" "%MIND_METRICS%"
 exit /b %ERRORLEVEL%

@@ -16,6 +16,17 @@ set GT_ROOT=C:\workspace\world\MIND-Data
 set MIND_TESTS=C:\workspace\world\MIND-tests
 set MODEL_NAME=deepverse
 set DEEPVERSE_REPO=C:\workspace\world\DeepVerse
+:: Cross-spawn python for DeepVerse inference. Resolution order:
+::   1. DEEPVERSE_VENV_PY env var (if set, used as-is — no existence check)
+::   2. DeepVerse\.venv\Scripts\python.exe (if present)
+::   3. plain `python` on PATH (whatever's active in the calling shell)
+if not defined DEEPVERSE_VENV_PY (
+    if exist "%DEEPVERSE_REPO%\.venv\Scripts\python.exe" (
+        set DEEPVERSE_VENV_PY=%DEEPVERSE_REPO%\.venv\Scripts\python.exe
+    ) else (
+        set DEEPVERSE_VENV_PY=python
+    )
+)
 set LOG=%~dp0drive_deepverse.log
 if not defined MIND_FPS set MIND_FPS=24
 
@@ -38,13 +49,14 @@ echo   gt_root      : %GT_ROOT%
 echo   test_root    : %MIND_TESTS%
 echo   model        : %MODEL_NAME%
 echo   deepverse    : %DEEPVERSE_REPO%
+echo   deepverse_py : %DEEPVERSE_VENV_PY%
 echo   log          : %LOG%
 echo ============================================================
 
 :: drive_deepverse.py PERSPECTIVES tuple now defaults to ("3rd_data","1st_data"),
 :: so omitting --perspective walks both with 3rd-person first. Pass --perspective
 :: <p> on the CLI to restrict to one. CLI args after %* override the defaults.
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0run_dreamx.ps1" "%LOG%" "%PY%" "src\drive_deepverse.py" "--gt-root" "%GT_ROOT%" "--test-root" "%MIND_TESTS%" "--model-name" "%MODEL_NAME%" "--deepverse-repo" "%DEEPVERSE_REPO%" "--fps" "%MIND_FPS%" %*
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0run_dreamx.ps1" "%LOG%" "%PY%" "src\drive_deepverse.py" "--gt-root" "%GT_ROOT%" "--test-root" "%MIND_TESTS%" "--model-name" "%MODEL_NAME%" "--deepverse-repo" "%DEEPVERSE_REPO%" "--deepverse-py" "%DEEPVERSE_VENV_PY%" "--fps" "%MIND_FPS%" %*
 
 set EXIT_CODE=%ERRORLEVEL%
 if not %EXIT_CODE%==0 ( echo. & echo ERROR: drive_deepverse.py exited with %EXIT_CODE% & exit /b %EXIT_CODE% )

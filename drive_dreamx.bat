@@ -22,6 +22,11 @@ set MIND_TESTS=C:\workspace\world\MIND-tests
 set MODEL_NAME=dreamx-world
 set LOG=%~dp0drive_dreamx.log
 
+:: DreamX-World's own .venv is missing on this box; reuse MIND's venv as the
+:: cross-spawned inference interpreter. Override DREAMX_VENV_PY beforehand
+:: to point elsewhere if you have a dedicated DreamX-World venv.
+if not defined DREAMX_VENV_PY set DREAMX_VENV_PY=%PY%
+
 if not exist "%PY%" (
     echo ERROR: venv python not found: %PY%
     exit /b 2
@@ -58,5 +63,7 @@ echo ============================================================
 echo Generation done. Running scoring: run_mind.bat %MODEL_NAME%
 echo ============================================================
 :: run_mind.bat defaults PERSON=1st, matching this bat's 1st_data-only generation.
-call "%~dp0run_mind.bat" "%MODEL_NAME%"
+:: gsc requires per-gt_name mirror_test mp4s; override via MIND_METRICS env to subset.
+if not defined MIND_METRICS set MIND_METRICS=lcm,visual,dino,action,gsc
+call "%~dp0run_mind.bat" "%MODEL_NAME%" "%MIND_METRICS%"
 exit /b %ERRORLEVEL%
