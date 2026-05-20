@@ -20,6 +20,7 @@ Skip-if-exists: samples whose target video.mp4 already exists are excluded from 
 import argparse
 import json
 import os
+import shutil
 import subprocess
 import sys
 import time
@@ -27,6 +28,7 @@ from pathlib import Path
 
 import av
 
+from utils.mirror_test_utils import MIRROR_ACTIONS, MIRROR_DEFAULT_ACTION, gather_mirror_samples
 from utils.stats_logger import log_mp4
 
 DREAMX_REPO = Path(r"C:\workspace\world\DreamX-World")
@@ -171,7 +173,15 @@ def main() -> int:
     parser.add_argument("--fps",            type=int, default=FPS, help=f"Output fps; 24 or 16 (default {FPS})")
     parser.add_argument("--steps",          type=int, default=STEPS, help=f"Denoising steps (default {STEPS})")
     parser.add_argument("--gpu-memory-mode", default=GPU_MEMORY_MODE, help=f"DreamX --GPU_memory_mode; 'none' to skip (default {GPU_MEMORY_MODE})")
+    parser.add_argument("--mirror-test", action="store_true",
+                        help="Also generate mirror_test outputs (additive). One mp4 per first-frame PNG.")
+    parser.add_argument("--mirror-only", action="store_true",
+                        help="Skip action_space_test + mem_test; only generate mirror_test. Implies --mirror-test.")
+    parser.add_argument("--mirror-action", default=MIRROR_DEFAULT_ACTION, choices=MIRROR_ACTIONS,
+                        help=f"Action prefix for mirror_test (default '{MIRROR_DEFAULT_ACTION}').")
     args = parser.parse_args()
+    if args.mirror_only:
+        args.mirror_test = True
 
     if not DREAMX_INFER.exists():
         print(f"FATAL: inference script not found at {DREAMX_INFER}", file=sys.stderr)
@@ -189,7 +199,9 @@ def main() -> int:
     batch_output_dir = args.test_root / args.model_name / ".outputs"
     batch_output_dir.mkdir(parents=True, exist_ok=True)
 
-    samples = gather_samples(args.gt_root)
+    samples = [] if args.mirror_only else gather_samples(args.gt_root)
+    if args.mirror_test:
+        samples += gather_mirror_samples(args.gt_root, args.mirror_action)
     if args.perspective:
         samples = [s for s in samples if s["perspective"] == args.perspective]
     if args.test_type:
@@ -215,7 +227,11 @@ def main() -> int:
         stem = unique_stem(s)
         frame_png = work_dir / f"{stem}.png"
         if not frame_png.exists():
-            extract_first_frame(s["video"], frame_png)
+            if s.get("frame_png_src") is not None:
+                frame_png.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(s["frame_png_src"], frame_png)
+            else:
+                extract_first_frame(s["video"], frame_png)
 
         with open(s["action"], encoding="utf-8") as f:
             action_json = json.load(f)

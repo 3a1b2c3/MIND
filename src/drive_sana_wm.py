@@ -37,6 +37,7 @@ from pathlib import Path
 
 import av
 
+from utils.mirror_test_utils import MIRROR_ACTIONS, MIRROR_DEFAULT_ACTION, gather_mirror_samples
 from utils.stats_logger import log_mp4
 
 TEST_TYPES = ("action_space_test", "mem_test")
@@ -188,7 +189,15 @@ def main() -> int:
     parser.add_argument("--seed", type=int, default=DEFAULT_SEED)
     parser.add_argument("--with-refiner", action="store_true",
                         help="Run the refiner pass too (off by default — matches test_sana_wm.bat's --no_refiner).")
+    parser.add_argument("--mirror-test", action="store_true",
+                        help="Also generate mirror_test outputs (additive). One mp4 per first-frame PNG.")
+    parser.add_argument("--mirror-only", action="store_true",
+                        help="Skip action_space_test + mem_test; only generate mirror_test. Implies --mirror-test.")
+    parser.add_argument("--mirror-action", default=MIRROR_DEFAULT_ACTION, choices=MIRROR_ACTIONS,
+                        help=f"Action prefix for mirror_test (default '{MIRROR_DEFAULT_ACTION}').")
     args = parser.parse_args()
+    if args.mirror_only:
+        args.mirror_test = True
 
     sana_model_dir = args.sana_model_dir or (args.sana_repo / "output" / "pretrained_models" / "SANA-WM_bidirectional")
     sana_entry = args.sana_repo / "inference_video_scripts" / "inference_sana_wm.py"
@@ -214,7 +223,9 @@ def main() -> int:
     work_dir = args.work_dir or (args.test_root / ".sana_wm_work")
     work_dir.mkdir(parents=True, exist_ok=True)
 
-    samples = gather_samples(args.gt_root)
+    samples = [] if args.mirror_only else gather_samples(args.gt_root)
+    if args.mirror_test:
+        samples += gather_mirror_samples(args.gt_root, args.mirror_action)
     if args.perspective:
         samples = [s for s in samples if s["perspective"] == args.perspective]
     if args.test_type:
@@ -270,7 +281,11 @@ def main() -> int:
         prompt_txt = work_dir / f"{stem}.txt"
 
         if not frame_png.exists():
-            extract_first_frame(s["video"], frame_png)
+            if s.get("frame_png_src") is not None:
+                frame_png.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(s["frame_png_src"], frame_png)
+            else:
+                extract_first_frame(s["video"], frame_png)
         prompt_txt.write_text(caption_for(s), encoding="utf-8")
         action_dsl = mind_action_to_sana_dsl(s["action"], args.num_frames)
 

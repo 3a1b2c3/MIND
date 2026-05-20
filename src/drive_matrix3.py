@@ -19,6 +19,7 @@ Limitations:
 import argparse
 import json
 import os
+import shutil
 import subprocess
 import sys
 import threading
@@ -29,6 +30,7 @@ import av
 import psutil
 from PIL import Image
 
+from utils.mirror_test_utils import MIRROR_ACTIONS, MIRROR_DEFAULT_ACTION, gather_mirror_samples
 from utils.stats_logger import log_mp4
 
 MATRIX3_REPO = Path(r"C:\workspace\world\matrix3\Matrix-Game-3")
@@ -86,7 +88,8 @@ def output_path(test_root: Path, model_name: str, sample: dict) -> Path:
     return test_root / model_name / sample["perspective"] / sample["test_type"] / sample["gt_name"] / "video.mp4"
 
 
-def run_one(sample: dict, test_root: Path, model_name: str, work_dir: Path, dry_run: bool) -> int:
+def run_one(sample: dict, test_root: Path, model_name: str, work_dir: Path, dry_run: bool,
+            num_iterations: int | None = None, num_inference_steps: int | None = None) -> int:
     out = output_path(test_root, model_name, sample)
     if out.exists():
         print(f"[skip] {sample['perspective']}/{sample['test_type']}/{sample['gt_name']} -> {out} (exists)")
@@ -98,15 +101,17 @@ def run_one(sample: dict, test_root: Path, model_name: str, work_dir: Path, dry_
         prompt = "Third-person view of a character exploring a 3D virtual environment."
 
     frame_png = work_dir / sample["perspective"] / sample["test_type"] / f"{sample['gt_name']}.png"
-    extract_first_frame(sample["video"], frame_png)
+    if sample.get("frame_png_src") is not None:
+        frame_png.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(sample["frame_png_src"], frame_png)
+    else:
+        extract_first_frame(sample["video"], frame_png)
 
     out.parent.mkdir(parents=True, exist_ok=True)
-    # Speed knobs (env-overridable; defaults match the original calibrated values).
-    #   MIND_M3_ITERATIONS    -> --num_iterations (default 8). Outer rollout loop.
-    #   MIND_M3_STEPS         -> --num_inference_steps (default 5). Diffusion steps per iter.
-    # Halving either roughly halves wall-clock at a quality cost; tune per run.
-    m3_iters = os.environ.get("MIND_M3_ITERATIONS", "8")
-    m3_steps = os.environ.get("MIND_M3_STEPS", "5")
+    # Speed knobs. Priority: CLI flag > env var > default. Halving either
+    # roughly halves wall-clock per clip at a quality cost; tune per run.
+    m3_iters = str(num_iterations) if num_iterations is not None else os.environ.get("MIND_M3_ITERATIONS", "8")
+    m3_steps = str(num_inference_steps) if num_inference_steps is not None else os.environ.get("MIND_M3_STEPS", "5")
     cmd = [
         str(MATRIX3_VENV_PY),
         str(MATRIX3_GENERATE),
@@ -164,10 +169,24 @@ def main() -> int:
     parser.add_argument("--perspective", choices=PERSPECTIVES, help="Limit to one perspective")
     parser.add_argument("--test-type", choices=TEST_TYPES, help="Limit to one test type")
     parser.add_argument("--limit", type=int, help="Only run first N matched samples")
+    parser.add_argument("--start-index", type=int, default=0,
+                        help="Skip the first N matched samples (applied AFTER --perspective / --test-type / --only filters, BEFORE --limit). Use to resume mid-run.")
+    parser.add_argument("--num-iterations", type=int, default=None,
+                        help="matrix3 generate.py --num_iterations (outer rollout loop). Default 8. Env fallback: MIND_M3_ITERATIONS.")
+    parser.add_argument("--num-inference-steps", type=int, default=None,
+                        help="matrix3 generate.py --num_inference_steps (diffusion steps per iter). Default 5. Env fallback: MIND_M3_STEPS.")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--fps", type=int, default=24,
                         help="Accepted for bat-script consistency; matrix3 generate.py uses its own default (24).")
+    parser.add_argument("--mirror-test", action="store_true",
+                        help="Also generate mirror_test outputs (additive). One mp4 per first-frame PNG.")
+    parser.add_argument("--mirror-only", action="store_true",
+                        help="Skip action_space_test + mem_test; only generate mirror_test. Implies --mirror-test.")
+    parser.add_argument("--mirror-action", default=MIRROR_DEFAULT_ACTION, choices=MIRROR_ACTIONS,
+                        help=f"Action prefix for mirror_test (default '{MIRROR_DEFAULT_ACTION}').")
     args = parser.parse_args()
+    if args.mirror_only:
+        args.mirror_test = True
 
     if not MATRIX3_GENERATE.exists():
         print(f"FATAL: generate.py not found at {MATRIX3_GENERATE}", file=sys.stderr)
@@ -179,13 +198,20 @@ def main() -> int:
     work_dir = args.work_dir or (args.test_root / ".frames")
     work_dir.mkdir(parents=True, exist_ok=True)
 
-    samples = gather_samples(args.gt_root)
+    samples = [] if args.mirror_only else gather_samples(args.gt_root)
+    if args.mirror_test:
+        samples += gather_mirror_samples(args.gt_root, args.mirror_action)
     if args.perspective:
         samples = [s for s in samples if s["perspective"] == args.perspective]
     if args.test_type:
         samples = [s for s in samples if s["test_type"] == args.test_type]
     if args.only:
         samples = [s for s in samples if any(sub.lower() in s["gt_name"].lower() for sub in args.only)]
+    if args.start_index:
+        if args.start_index >= len(samples):
+            print(f"--start-index {args.start_index} is past the end of {len(samples)} matched sample(s); nothing to do.")
+            return 0
+        samples = samples[args.start_index:]
     if args.limit:
         samples = samples[: args.limit]
 
@@ -200,7 +226,9 @@ def main() -> int:
 
     failures: list[str] = []
     for s in samples:
-        rc = run_one(s, args.test_root, args.model_name, work_dir, args.dry_run)
+        rc = run_one(s, args.test_root, args.model_name, work_dir, args.dry_run,
+                     num_iterations=args.num_iterations,
+                     num_inference_steps=args.num_inference_steps)
         if rc != 0:
             failures.append(f"{s['perspective']}/{s['test_type']}/{s['gt_name']}")
 

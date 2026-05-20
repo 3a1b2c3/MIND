@@ -34,6 +34,7 @@ Usage:
 
 import argparse
 import os
+import shutil
 import subprocess
 import sys
 import time
@@ -41,6 +42,7 @@ from pathlib import Path
 
 import av
 
+from utils.mirror_test_utils import MIRROR_ACTIONS, MIRROR_DEFAULT_ACTION, gather_mirror_samples
 from utils.stats_logger import log_mp4
 
 LINGBOT_REPO = Path(r"C:\workspace\world\lingbot-world")
@@ -107,7 +109,11 @@ def run_one(sample: dict, test_root: Path, model_name: str, work_dir: Path,
         return 0
 
     frame_png = work_dir / sample["perspective"] / sample["test_type"] / f"{sample['gt_name']}.png"
-    extract_first_frame(sample["video"], frame_png)
+    if sample.get("frame_png_src") is not None:
+        frame_png.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(sample["frame_png_src"], frame_png)
+    else:
+        extract_first_frame(sample["video"], frame_png)
     caption = derive_caption(sample["perspective"])
 
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -198,7 +204,15 @@ def main() -> int:
                    help="Cast model params to lower dtype on load (less VRAM).")
     p.add_argument("--overlay_actions", action="store_true",
                    help="Draw WASD key state overlay on output frames (debug).")
+    p.add_argument("--mirror-test", action="store_true",
+                   help="Also generate mirror_test outputs (additive). One mp4 per first-frame PNG.")
+    p.add_argument("--mirror-only", action="store_true",
+                   help="Skip action_space_test + mem_test; only generate mirror_test. Implies --mirror-test.")
+    p.add_argument("--mirror-action", default=MIRROR_DEFAULT_ACTION, choices=MIRROR_ACTIONS,
+                   help=f"Action prefix for mirror_test (default '{MIRROR_DEFAULT_ACTION}').")
     args = p.parse_args()
+    if args.mirror_only:
+        args.mirror_test = True
 
     if not LINGBOT_GENERATE.exists():
         print(f"FATAL: generate.py not found at {LINGBOT_GENERATE}", file=sys.stderr)
@@ -215,7 +229,9 @@ def main() -> int:
     work_dir = args.work_dir or (args.test_root / ".frames")
     work_dir.mkdir(parents=True, exist_ok=True)
 
-    samples = gather_samples(args.gt_root)
+    samples = [] if args.mirror_only else gather_samples(args.gt_root)
+    if args.mirror_test:
+        samples += gather_mirror_samples(args.gt_root, args.mirror_action)
     if args.perspective:
         samples = [s for s in samples if s["perspective"] == args.perspective]
     if args.test_type:
