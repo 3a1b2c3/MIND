@@ -121,9 +121,9 @@ echo ============================================================
 :: Use run_dreamx.ps1 to tee scoring output to both terminal AND a timestamped
 :: log file. Same wrapper that drive_*.bat use for generation logs.
 if defined PERSPECTIVES (
-    powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0run_dreamx.ps1" "%LOG%" "%PY%" "src\process.py" "--gt_root" "%GT_ROOT%" "--test_root" "%TEST_ROOT%" "--metrics" "%METRICS%" "--num_gpus" "%NUM_GPUS%" "--perspectives" "%PERSPECTIVES%"
+    "%PY%" "%~dp0run_dreamx.py" "%LOG%" "%PY%" "src\process.py" "--gt_root" "%GT_ROOT%" "--test_root" "%TEST_ROOT%" "--metrics" "%METRICS%" "--num_gpus" "%NUM_GPUS%" "--perspectives" "%PERSPECTIVES%"
 ) else (
-    powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0run_dreamx.ps1" "%LOG%" "%PY%" "src\process.py" "--gt_root" "%GT_ROOT%" "--test_root" "%TEST_ROOT%" "--metrics" "%METRICS%" "--num_gpus" "%NUM_GPUS%"
+    "%PY%" "%~dp0run_dreamx.py" "%LOG%" "%PY%" "src\process.py" "--gt_root" "%GT_ROOT%" "--test_root" "%TEST_ROOT%" "--metrics" "%METRICS%" "--num_gpus" "%NUM_GPUS%"
 )
 
 set EXIT_CODE=%ERRORLEVEL%

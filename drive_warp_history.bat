@@ -21,7 +21,7 @@ if not exist "%WARP_HISTORY_REPO%" ( echo ERROR: repo not found: %WARP_HISTORY_R
 if not exist "%~dp0src\drive_warp_history.py" ( echo ERROR: src\drive_warp_history.py not yet written & exit /b 2 )
 
 echo === Warp-as-History staging into MIND-tests  ^|  model=%MODEL_NAME% ===
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0run_dreamx.ps1" "%LOG%" "%PY%" "src\drive_warp_history.py" "--gt-root" "%GT_ROOT%" "--test-root" "%MIND_TESTS%" "--model-name" "%MODEL_NAME%" "--repo" "%WARP_HISTORY_REPO%" "--py" "%WARP_HISTORY_PY%" "--fps" "%MIND_FPS%" "--perspective" "1st_data" %*
+"%PY%" "%~dp0run_dreamx.py" "%LOG%" "%PY%" "src\drive_warp_history.py" "--gt-root" "%GT_ROOT%" "--test-root" "%MIND_TESTS%" "--model-name" "%MODEL_NAME%" "--repo" "%WARP_HISTORY_REPO%" "--py" "%WARP_HISTORY_PY%" "--fps" "%MIND_FPS%" "--perspective" "1st_data" %*
 set EXIT_CODE=%ERRORLEVEL%
 if not %EXIT_CODE%==0 ( exit /b %EXIT_CODE% )
 :: gsc requires per-gt_name mirror_test mp4s; override via MIND_METRICS env to subset.

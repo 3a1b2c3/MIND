@@ -56,7 +56,7 @@ echo ============================================================
 :: drive_deepverse.py PERSPECTIVES tuple now defaults to ("3rd_data","1st_data"),
 :: so omitting --perspective walks both with 3rd-person first. Pass --perspective
 :: <p> on the CLI to restrict to one. CLI args after %* override the defaults.
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0run_dreamx.ps1" "%LOG%" "%PY%" "src\drive_deepverse.py" "--gt-root" "%GT_ROOT%" "--test-root" "%MIND_TESTS%" "--model-name" "%MODEL_NAME%" "--deepverse-repo" "%DEEPVERSE_REPO%" "--deepverse-py" "%DEEPVERSE_VENV_PY%" "--fps" "%MIND_FPS%" %*
+"%PY%" "%~dp0run_dreamx.py" "%LOG%" "%PY%" "src\drive_deepverse.py" "--gt-root" "%GT_ROOT%" "--test-root" "%MIND_TESTS%" "--model-name" "%MODEL_NAME%" "--deepverse-repo" "%DEEPVERSE_REPO%" "--deepverse-py" "%DEEPVERSE_VENV_PY%" "--fps" "%MIND_FPS%" %*
 
 set EXIT_CODE=%ERRORLEVEL%
 if not %EXIT_CODE%==0 ( echo. & echo ERROR: drive_deepverse.py exited with %EXIT_CODE% & exit /b %EXIT_CODE% )

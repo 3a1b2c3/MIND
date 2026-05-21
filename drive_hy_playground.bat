@@ -24,7 +24,7 @@ echo ============================================================
 echo HY-World-2.0-Playground staging into MIND-tests  ^|  model=%MODEL_NAME%
 echo ============================================================
 
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0run_dreamx.ps1" "%LOG%" "%PY%" "src\drive_hy_playground.py" "--gt-root" "%GT_ROOT%" "--test-root" "%MIND_TESTS%" "--model-name" "%MODEL_NAME%" "--repo" "%HY_PLAYGROUND_REPO%" "--py" "%HY_PLAYGROUND_PY%" "--fps" "%MIND_FPS%" "--perspective" "1st_data" %*
+"%PY%" "%~dp0run_dreamx.py" "%LOG%" "%PY%" "src\drive_hy_playground.py" "--gt-root" "%GT_ROOT%" "--test-root" "%MIND_TESTS%" "--model-name" "%MODEL_NAME%" "--repo" "%HY_PLAYGROUND_REPO%" "--py" "%HY_PLAYGROUND_PY%" "--fps" "%MIND_FPS%" "--perspective" "1st_data" %*
 set EXIT_CODE=%ERRORLEVEL%
 if not %EXIT_CODE%==0 ( exit /b %EXIT_CODE% )
 :: gsc requires per-gt_name mirror_test mp4s; override via MIND_METRICS env to subset.

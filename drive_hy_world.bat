@@ -24,7 +24,7 @@ echo ============================================================
 echo HY-World-2.0 staging into MIND-tests  ^|  model=%MODEL_NAME%  ^|  log=%LOG%
 echo ============================================================
 
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0run_dreamx.ps1" "%LOG%" "%PY%" "src\drive_hy_world.py" "--gt-root" "%GT_ROOT%" "--test-root" "%MIND_TESTS%" "--model-name" "%MODEL_NAME%" "--hy-world-repo" "%HY_WORLD_REPO%" "--hy-world-py" "%HY_WORLD_PY%" "--fps" "%MIND_FPS%" "--perspective" "1st_data" %*
+"%PY%" "%~dp0run_dreamx.py" "%LOG%" "%PY%" "src\drive_hy_world.py" "--gt-root" "%GT_ROOT%" "--test-root" "%MIND_TESTS%" "--model-name" "%MODEL_NAME%" "--hy-world-repo" "%HY_WORLD_REPO%" "--hy-world-py" "%HY_WORLD_PY%" "--fps" "%MIND_FPS%" "--perspective" "1st_data" %*
 set EXIT_CODE=%ERRORLEVEL%
 if not %EXIT_CODE%==0 ( echo. & echo ERROR: drive_hy_world.py exited with %EXIT_CODE% & exit /b %EXIT_CODE% )
 

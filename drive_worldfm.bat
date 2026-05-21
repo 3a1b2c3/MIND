@@ -21,7 +21,7 @@ if not exist "%WORLDFM_REPO%" ( echo ERROR: repo not found: %WORLDFM_REPO% & exi
 if not exist "%~dp0src\drive_worldfm.py" ( echo ERROR: src\drive_worldfm.py not yet written & exit /b 2 )
 
 echo === worldfm staging into MIND-tests  ^|  model=%MODEL_NAME% ===
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0run_dreamx.ps1" "%LOG%" "%PY%" "src\drive_worldfm.py" "--gt-root" "%GT_ROOT%" "--test-root" "%MIND_TESTS%" "--model-name" "%MODEL_NAME%" "--repo" "%WORLDFM_REPO%" "--py" "%WORLDFM_PY%" "--fps" "%MIND_FPS%" "--perspective" "1st_data" %*
+"%PY%" "%~dp0run_dreamx.py" "%LOG%" "%PY%" "src\drive_worldfm.py" "--gt-root" "%GT_ROOT%" "--test-root" "%MIND_TESTS%" "--model-name" "%MODEL_NAME%" "--repo" "%WORLDFM_REPO%" "--py" "%WORLDFM_PY%" "--fps" "%MIND_FPS%" "--perspective" "1st_data" %*
 set EXIT_CODE=%ERRORLEVEL%
 if not %EXIT_CODE%==0 ( exit /b %EXIT_CODE% )
 :: gsc requires per-gt_name mirror_test mp4s; override via MIND_METRICS env to subset.

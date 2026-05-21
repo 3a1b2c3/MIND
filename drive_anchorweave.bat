@@ -21,7 +21,7 @@ if not exist "%ANCHORWEAVE_REPO%" ( echo ERROR: repo not found: %ANCHORWEAVE_REP
 if not exist "%~dp0src\drive_anchorweave.py" ( echo ERROR: src\drive_anchorweave.py not yet written & exit /b 2 )
 
 echo === AnchorWeave staging into MIND-tests  ^|  model=%MODEL_NAME% ===
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0run_dreamx.ps1" "%LOG%" "%PY%" "src\drive_anchorweave.py" "--gt-root" "%GT_ROOT%" "--test-root" "%MIND_TESTS%" "--model-name" "%MODEL_NAME%" "--repo" "%ANCHORWEAVE_REPO%" "--py" "%ANCHORWEAVE_PY%" "--fps" "%MIND_FPS%" "--perspective" "1st_data" %*
+"%PY%" "%~dp0run_dreamx.py" "%LOG%" "%PY%" "src\drive_anchorweave.py" "--gt-root" "%GT_ROOT%" "--test-root" "%MIND_TESTS%" "--model-name" "%MODEL_NAME%" "--repo" "%ANCHORWEAVE_REPO%" "--py" "%ANCHORWEAVE_PY%" "--fps" "%MIND_FPS%" "--perspective" "1st_data" %*
 set EXIT_CODE=%ERRORLEVEL%
 if not %EXIT_CODE%==0 ( exit /b %EXIT_CODE% )
 :: gsc requires per-gt_name mirror_test mp4s; override via MIND_METRICS env to subset.

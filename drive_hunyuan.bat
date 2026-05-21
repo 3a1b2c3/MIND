@@ -49,7 +49,7 @@ echo   hunyuan_py   : %HUNYUAN_PY%
 echo   log          : %LOG%
 echo ============================================================
 
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0run_dreamx.ps1" "%LOG%" "%PY%" "src\drive_hunyuan.py" "--gt-root" "%GT_ROOT%" "--test-root" "%MIND_TESTS%" "--model-name" "%MODEL_NAME%" "--hunyuan-repo" "%HUNYUAN_REPO%" "--hunyuan-py" "%HUNYUAN_PY%" "--fps" "%MIND_FPS%" "--perspective" "1st_data" %*
+"%PY%" "%~dp0run_dreamx.py" "%LOG%" "%PY%" "src\drive_hunyuan.py" "--gt-root" "%GT_ROOT%" "--test-root" "%MIND_TESTS%" "--model-name" "%MODEL_NAME%" "--hunyuan-repo" "%HUNYUAN_REPO%" "--hunyuan-py" "%HUNYUAN_PY%" "--fps" "%MIND_FPS%" "--perspective" "1st_data" %*
 
 set EXIT_CODE=%ERRORLEVEL%
 if not %EXIT_CODE%==0 ( echo. & echo ERROR: drive_hunyuan.py exited with %EXIT_CODE% & exit /b %EXIT_CODE% )
