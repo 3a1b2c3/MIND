@@ -59,7 +59,14 @@ echo ============================================================
 :: extra `--perspective 3rd_data` arg (argparse last-wins).
 :: MIND_START_INDEX: skip first N matched samples (resume mid-run). Default 0.
 if not defined MIND_START_INDEX set MIND_START_INDEX=0
-"%PY%" "%~dp0run_dreamx.py" "%LOG%" "%PY%" "src\drive_matrix3.py" "--gt-root" "%GT_ROOT%" "--test-root" "%MIND_TESTS%" "--fps" "%MIND_FPS%" "--perspective" "1st_data" "--start-index" "%MIND_START_INDEX%" %*
+
+:: Mirror-test generation drives the gsc metric (per-sample mirror_test mp4s).
+:: On by default; set MIND_MIRROR_TEST=0 to skip.
+if not defined MIND_MIRROR_TEST set MIND_MIRROR_TEST=1
+set MIRROR_ARG=
+if "%MIND_MIRROR_TEST%"=="1" set MIRROR_ARG=--mirror-test
+
+"%PY%" "%~dp0run_dreamx.py" "%LOG%" "%PY%" "src\drive_matrix3.py" "--gt-root" "%GT_ROOT%" "--test-root" "%MIND_TESTS%" "--fps" "%MIND_FPS%" "--perspective" "1st_data" "--start-index" "%MIND_START_INDEX%" %MIRROR_ARG% %*
 
 set EXIT_CODE=%ERRORLEVEL%
 if not %EXIT_CODE%==0 (

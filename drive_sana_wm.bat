@@ -31,7 +31,14 @@ echo === Sana-WM staging into MIND-tests  ^|  model=%MODEL_NAME% ===
 :: drive_sana_wm.py PERSPECTIVES tuple is ordered ("3rd_data","1st_data"), so the
 :: default walk does 3rd-person samples before 1st-person. Pass --perspective on
 :: the CLI to restrict to one.
-"%PY%" "%~dp0run_dreamx.py" "%LOG%" "%PY%" "src\drive_sana_wm.py" "--gt-root" "%GT_ROOT%" "--test-root" "%MIND_TESTS%" "--model-name" "%MODEL_NAME%" "--sana-repo" "%SANA_REPO%" "--sana-py" "%SANA_PY%" "--fps" "%MIND_FPS%" %*
+
+:: Mirror-test generation drives the gsc metric (per-sample mirror_test mp4s).
+:: On by default; set MIND_MIRROR_TEST=0 to skip.
+if not defined MIND_MIRROR_TEST set MIND_MIRROR_TEST=1
+set MIRROR_ARG=
+if "%MIND_MIRROR_TEST%"=="1" set MIRROR_ARG=--mirror-test
+
+"%PY%" "%~dp0run_dreamx.py" "%LOG%" "%PY%" "src\drive_sana_wm.py" "--gt-root" "%GT_ROOT%" "--test-root" "%MIND_TESTS%" "--model-name" "%MODEL_NAME%" "--sana-repo" "%SANA_REPO%" "--sana-py" "%SANA_PY%" "--fps" "%MIND_FPS%" %MIRROR_ARG% %*
 set EXIT_CODE=%ERRORLEVEL%
 if not %EXIT_CODE%==0 ( exit /b %EXIT_CODE% )
 

@@ -55,7 +55,14 @@ echo ============================================================
 :: --perspective 1st_data: only stage first-person samples. Override with an
 :: extra `--perspective 3rd_data` arg (argparse last-wins).
 if not defined MIND_FPS set MIND_FPS=24
-"%PY%" "%~dp0run_dreamx.py" "%LOG%" "%PY%" "src\drive_dreamx.py" "--gt-root" "%GT_ROOT%" "--test-root" "%MIND_TESTS%" "--model-name" "%MODEL_NAME%" "--height" "352" "--width" "640" "--video-length" "121" "--fps" "%MIND_FPS%" "--steps" "30" "--gpu-memory-mode" "model_full_load_and_qfloat8" "--perspective" "1st_data" %*
+
+:: Mirror-test generation drives the gsc metric (per-sample mirror_test mp4s).
+:: On by default; set MIND_MIRROR_TEST=0 to skip.
+if not defined MIND_MIRROR_TEST set MIND_MIRROR_TEST=1
+set MIRROR_ARG=
+if "%MIND_MIRROR_TEST%"=="1" set MIRROR_ARG=--mirror-test
+
+"%PY%" "%~dp0run_dreamx.py" "%LOG%" "%PY%" "src\drive_dreamx.py" "--gt-root" "%GT_ROOT%" "--test-root" "%MIND_TESTS%" "--model-name" "%MODEL_NAME%" "--height" "352" "--width" "640" "--video-length" "121" "--fps" "%MIND_FPS%" "--steps" "30" "--gpu-memory-mode" "model_full_load_and_qfloat8" "--perspective" "1st_data" %MIRROR_ARG% %*
 
 set EXIT_CODE=%ERRORLEVEL%
 if not %EXIT_CODE%==0 (
