@@ -39,8 +39,13 @@ set TRANSFORMERS_OFFLINE=1
 set PY=%~dp0.venv\Scripts\python.exe
 if not defined GT_ROOT    set GT_ROOT=C:\workspace\world\MIND-Data
 if not defined MIND_TESTS set MIND_TESTS=C:\workspace\world\MIND-tests
-set MODEL_NAME=lingbot-base-cam-nf4
-set CKPT_DIR=C:\workspace\world\lingbot-world\base-cam-nf4
+:: Path A: use the fast-mini-cam ckpt + generate_fast.py. The previous
+:: base-cam-nf4 + generate.py path failed on every sample (OSError: missing
+:: config.json in the NF4 release). fast-mini-cam ships a complete layout
+:: and produces mp4s out of the box; action-metric quality will be loose
+:: since action_path is dropped (see drive_lingbot.py for the Path B plan).
+set MODEL_NAME=lingbot-fast
+set CKPT_DIR=C:\workspace\world\lingbot-world\fast-mini-cam
 set LOG=%~dp0drive_lingbot.log
 
 :: lingbot fps is set via wan/configs/shared_config.py (sample_fps=24 patched in).

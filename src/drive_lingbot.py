@@ -46,9 +46,14 @@ from utils.mirror_test_utils import MIRROR_ACTIONS, MIRROR_DEFAULT_ACTION, gathe
 from utils.stats_logger import log_mp4
 
 LINGBOT_REPO = Path(r"C:\workspace\world\lingbot-world")
-LINGBOT_GENERATE = LINGBOT_REPO / "generate.py"
+# Path A: use generate_fast.py against the fast-mini-cam ckpt. The original
+# generate.py + base-cam-nf4 path failed on every sample (OSError: Error no
+# file named config.json) because lingbot's WanModel.from_pretrained looked
+# for a top-level config.json that doesn't ship in the NF4 release. The fast
+# variant ships a complete ckpt layout and works out of the box.
+LINGBOT_GENERATE = LINGBOT_REPO / "generate_fast.py"
 LINGBOT_VENV_PY = LINGBOT_REPO / ".venv" / "Scripts" / "python.exe"
-DEFAULT_CKPT_DIR = LINGBOT_REPO / "fast"   # download.py --model fast lands here
+DEFAULT_CKPT_DIR = LINGBOT_REPO / "fast-mini-cam"  # holds VAE + T5 + lingbot_world_fast
 
 TEST_TYPES = ("action_space_test", "mem_test")
 PERSPECTIVES = ("1st_data", "3rd_data")
@@ -125,11 +130,18 @@ def run_one(sample: dict, test_root: Path, model_name: str, work_dir: Path,
         "--ckpt_dir", str(args.ckpt_dir),
         "--image", str(frame_png),
         "--prompt", caption,
-        "--action_path", str(sample["action"]),
+        # Path A intentionally drops --action_path. MIND's action.json doesn't
+        # match what generate_fast expects (it wants a directory of poses.npy
+        # + intrinsics.npy + WASD npys, not a flat action.json). Without
+        # --action_path the model runs in image+text mode and produces a
+        # plausible video; the action-metric scores will be loose but the
+        # other 4 metrics (lcm/visual/dino/gsc) work fine. Path B (in
+        # follow-up) will wire a proper converter.
         "--save_file", str(out),
         "--base_seed", str(args.seed),
         "--sample_solver", args.sample_solver,
         "--t5_cpu",                # keeps VRAM headroom on 32 GB cards
+        "--convert_model_dtype",   # always-on: avoids the OOM in test_fast.log
     ]
     if args.frame_num is not None:
         cmd += ["--frame_num", str(args.frame_num)]
@@ -139,8 +151,6 @@ def run_one(sample: dict, test_root: Path, model_name: str, work_dir: Path,
         cmd += ["--sample_shift", str(args.sample_shift)]
     if args.sample_guide_scale is not None:
         cmd += ["--sample_guide_scale", str(args.sample_guide_scale)]
-    if args.convert_model_dtype:
-        cmd += ["--convert_model_dtype"]
     if args.overlay_actions:
         cmd += ["--overlay_actions"]
 

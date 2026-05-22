@@ -127,13 +127,31 @@ if defined PERSPECTIVES (
 )
 
 set EXIT_CODE=%ERRORLEVEL%
+
+:: Resolve the newest result_<test>_*.json in %~dp0 so the Done block can
+:: print an exact path. process.py mints the timestamp at runtime so the bat
+:: doesn't know it up front. Run the FOR loop BEFORE the if/else so we don't
+:: have `goto` inside parens (cmd treats that as falling out of the block,
+:: which causes the else branch to also fire — that's the bug we hit before).
+set "RESULT_PATH=(none found)"
+for /f "delims=" %%F in ('dir /b /o-d "%~dp0result_%TEST_SUBDIR%_*.json" 2^>nul') do (
+    if not defined _RESULT_PICKED (
+        set "RESULT_PATH=%~dp0%%F"
+        set "_RESULT_PICKED=1"
+    )
+)
+set "_RESULT_PICKED="
+
 if %EXIT_CODE%==0 (
     echo.
     echo ============================================================
-    echo Done. Result JSON written next to this script.
+    echo Done.
+    echo   log    : %LOG%
+    echo   result : %RESULT_PATH%
     echo ============================================================
 ) else (
     echo.
     echo ERROR: process.py exited with %EXIT_CODE%
+    echo   log : %LOG%
 )
 exit /b %EXIT_CODE%
