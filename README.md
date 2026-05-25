@@ -17,7 +17,7 @@
 - [ ] Open-source **MIND-World (1.3B)** all training and inference code including a detailed code tutorial
 - [ ] Release the weights of all stages for **MIND-World (1.3B)** including frame-wised student model
 - [ ] Building Leaderboard
-- [ ] Building repo Awesome—Interactive World Model
+- [x] Building repo Awesome—Interactive World Model
 
 ## 📑 Table of Contents
 - [📜 Abstract](#-abstract)
