@@ -139,20 +139,19 @@ def run_one(sample: dict, test_root: Path, model_name: str, work_dir: Path,
         # follow-up) will wire a proper converter.
         "--save_file", str(out),
         "--base_seed", str(args.seed),
-        "--sample_solver", args.sample_solver,
+        # NOTE: --sample_solver / --sample_steps / --sample_guide_scale are NOT
+        # accepted by generate_fast.py (only generate.py has them). generate_fast
+        # uses a fixed solver/scheduler bundled with the distilled model.
         "--t5_cpu",                # keeps VRAM headroom on 32 GB cards
         "--convert_model_dtype",   # always-on: avoids the OOM in test_fast.log
     ]
     if args.frame_num is not None:
         cmd += ["--frame_num", str(args.frame_num)]
-    if args.sample_steps is not None:
-        cmd += ["--sample_steps", str(args.sample_steps)]
     if args.sample_shift is not None:
         cmd += ["--sample_shift", str(args.sample_shift)]
-    if args.sample_guide_scale is not None:
-        cmd += ["--sample_guide_scale", str(args.sample_guide_scale)]
-    if args.overlay_actions:
-        cmd += ["--overlay_actions"]
+    # --sample_guide_scale and --overlay_actions are not accepted by
+    # generate_fast.py. The distilled fast model bakes the guidance scale in
+    # and there is no overlay-actions visualizer in the fast pipeline.
 
     print(f"\n=== {sample['perspective']}/{sample['test_type']}/{sample['gt_name']} ===")
     print(f"caption: {caption[:90]}{'...' if len(caption) > 90 else ''}")

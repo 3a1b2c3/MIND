@@ -199,7 +199,28 @@ def main() -> int:
     if args.mirror_only:
         args.mirror_test = True
 
-    sana_model_dir = args.sana_model_dir or (args.sana_repo / "output" / "pretrained_models" / "SANA-WM_bidirectional")
+    # Two layouts supported:
+    #   1. Legacy local-dir: <sana-repo>/output/pretrained_models/SANA-WM_bidirectional/...
+    #   2. HF hub cache:     ~/.cache/huggingface/hub/models--Efficient-Large-Model--SANA-WM_bidirectional/snapshots/<rev>/...
+    # download_sana_wm.py now defaults to layout #2 (no --dest -> cache). Resolve
+    # which one is on disk, preferring an explicit --sana-model-dir if given.
+    if args.sana_model_dir:
+        sana_model_dir = args.sana_model_dir
+    else:
+        legacy_dir = args.sana_repo / "output" / "pretrained_models" / "SANA-WM_bidirectional"
+        if (legacy_dir / "dit" / "sana_wm_1600m_720p.safetensors").exists():
+            sana_model_dir = legacy_dir
+        else:
+            # Try HF cache. snapshot_download with local_files_only=True returns
+            # the snapshot dir path without re-downloading. Fails fast if missing.
+            try:
+                from huggingface_hub import snapshot_download as _snap
+                sana_model_dir = Path(_snap(
+                    repo_id="Efficient-Large-Model/SANA-WM_bidirectional",
+                    local_files_only=True,
+                ))
+            except Exception:
+                sana_model_dir = legacy_dir  # fall back so the error message points at the canonical path
     sana_entry = args.sana_repo / "inference_video_scripts" / "inference_sana_wm.py"
     sana_config = sana_model_dir / "config.yaml"
     sana_dit = sana_model_dir / "dit" / "sana_wm_1600m_720p.safetensors"
@@ -207,15 +228,23 @@ def main() -> int:
     sana_refiner_text_encoder = sana_model_dir / "refiner" / "text_encoder"
     intrinsics_path = args.intrinsics or (args.sana_repo / "asset" / "sana_wm" / "demo_0_intrinsics.npy")
 
-    for path, label in [
+    # The refiner is opt-in (--with-refiner). Only require its weights when
+    # the user asks for the refiner pass; otherwise inference_sana_wm.py runs
+    # with --no_refiner and never reads them, so partial-download installs
+    # (dit + vae only, no refiner) can still drive the model.
+    required_paths = [
         (sana_entry, "inference_sana_wm.py"),
         (sana_config, "SANA-WM config.yaml"),
         (sana_dit, "SANA-WM DiT weights"),
-        (sana_refiner_ckpt, "SANA-WM refiner weights"),
-        (sana_refiner_text_encoder, "SANA-WM refiner text_encoder dir"),
         (args.sana_py, "Sana .venv-wm python.exe"),
         (intrinsics_path, "intrinsics .npy"),
-    ]:
+    ]
+    if args.with_refiner:
+        required_paths += [
+            (sana_refiner_ckpt, "SANA-WM refiner weights"),
+            (sana_refiner_text_encoder, "SANA-WM refiner text_encoder dir"),
+        ]
+    for path, label in required_paths:
         if not path.exists() and not args.dry_run:
             print(f"FATAL: {label} not found: {path}", file=sys.stderr)
             return 2
