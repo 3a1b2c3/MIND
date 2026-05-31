@@ -51,9 +51,15 @@ MODEL_PATH = "FastVideo/Matrix-Game-3.0-Base-Distilled-Diffusers"
 
 
 def _write_status(path: Path, snapshot: dict) -> None:
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_text(json.dumps(snapshot), encoding="utf-8")
-    tmp.replace(path)
+    # Direct write — atomic replace via tmp+rename hits WinError 5 on Windows
+    # when the driver reads status.json at the same instant. Status snapshots
+    # are advisory progress info; a partial line on a torn read is fine because
+    # the driver json.loads in a try/except and just re-polls. PermissionError
+    # also survivable: skip this tick.
+    try:
+        path.write_text(json.dumps(snapshot), encoding="utf-8")
+    except (PermissionError, OSError):
+        pass
 
 
 def _find_produced_mp4(output_dir: Path, before_set: set[Path]) -> Path | None:
@@ -103,8 +109,20 @@ def main() -> int:
     _write_status(args.status_path, {"phase": "ready", "done": 0, "total": total})
 
     args.results_path.parent.mkdir(parents=True, exist_ok=True)
-    # Open append so a re-run could in principle continue; the driver currently
-    # always starts a fresh manifest, but this keeps semantics simple.
+    # Once FastVideo's MultiprocExecutor dies (OOM, CUDA error, etc.) every
+    # subsequent generate_video call raises the same "Forward execution thread
+    # failed." instantly. Cascading hundreds of identical failures buries the
+    # real cause. Bail out after the first executor death: stop the loop,
+    # write a single summary failure to results, and exit non-zero so the
+    # driver surfaces the actual error in the worker log.
+    EXECUTOR_DEAD_MARKERS = (
+        "Forward execution thread failed",
+        "Worker.*shutdown",
+        "MultiprocExecutor",
+    )
+    import re as _re
+    executor_dead_re = _re.compile("|".join(EXECUTOR_DEAD_MARKERS))
+
     with open(args.results_path, "a", encoding="utf-8") as results_fh:
         for i, req in enumerate(requests):
             req_id = req.get("id", i)
@@ -135,12 +153,23 @@ def main() -> int:
                 )
                 elapsed = time.perf_counter() - t0
             except Exception as e:
+                tb = traceback.format_exc()
                 results_fh.write(json.dumps({
                     "id": req_id, "ok": False,
                     "error": f"{type(e).__name__}: {e}",
-                    "traceback": traceback.format_exc(),
+                    "traceback": tb,
                 }) + "\n")
                 results_fh.flush()
+                if executor_dead_re.search(f"{type(e).__name__}: {e}") or executor_dead_re.search(tb):
+                    print(f"[worker] executor died on sample {req_id} "
+                          f"({target_path.parent.name}); aborting batch so the "
+                          "true cause (OOM / CUDA error) is visible upstream.",
+                          flush=True)
+                    _write_status(args.status_path, {
+                        "phase": "aborted", "done": i, "total": total,
+                        "error": f"{type(e).__name__}: {e}",
+                    })
+                    return 1
                 continue
 
             produced = _find_produced_mp4(output_dir, before)
