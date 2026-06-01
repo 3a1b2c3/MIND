@@ -40,6 +40,42 @@ if not defined HELIOS_VENV_PY set HELIOS_VENV_PY=C:\workspace\world\Helios\.venv
 
 if not defined MIND_FPS set MIND_FPS=24
 
+:: Force variant to base (single-stage full denoising). Mirrors run_helios.bat's
+:: default. Override with `set HELIOS_VARIANT=distilled` BEFORE invoking this
+:: bat. Without this explicit set, the env-inherited value could be wrong (we
+:: saw a session env still carrying "distilled" from a prior run_helios.bat).
+if not defined HELIOS_VARIANT set "HELIOS_VARIANT=base"
+
+:: Per-variant num_inference_steps default to MATCH run_helios.bat's variant
+:: logic: Distilled uses ~4 pyramid-distilled steps with stage2 ON; Base/Mid use
+:: ~30 full denoise steps with stage2 OFF. drive_helios_i2v.py defaults to 4
+:: (Distilled-tuned); we override here when the variant is Base/Mid.
+if not defined MIND_NUM_INFERENCE_STEPS (
+    if /I "!HELIOS_VARIANT!"=="distilled" (
+        set "MIND_NUM_INFERENCE_STEPS=4"
+    ) else (
+        set "MIND_NUM_INFERENCE_STEPS=30"
+    )
+)
+
+:: Default to --low-vram (group offload). Matches run_helios.bat's default and
+:: is required for Helios-Base on a 32 GB 5090 -- without it the transformer
+:: + activations exhaust VRAM and OOM during the first denoise step. To opt
+:: out (e.g. on an A6000 / L40S), pass --high-vram on the cmd line.
+echo %* | findstr /I /C:"--high-vram" >nul
+if errorlevel 1 (
+    echo %* | findstr /I /C:"--low-vram" >nul
+    if errorlevel 1 set "_LOW_VRAM_DEFAULT=--low-vram"
+)
+
+:: Prompt suffix gets appended to every per-sample prompt (after the
+:: action.json caption or perspective default). The MIND benchmark's
+:: action_space_test samples don't bake motion descriptions into their
+:: captions, so feeding Helios "moving forward" gives a steering signal
+:: that improves i2v motion coherence. Override via MIND_PROMPT_SUFFIX env
+:: (set to empty string to suppress entirely).
+if not defined MIND_PROMPT_SUFFIX set "MIND_PROMPT_SUFFIX=moving forward"
+
 if not exist "%PY%" (
     echo ERROR: MIND venv python not found: %PY%
     exit /b 2
@@ -61,6 +97,9 @@ echo   gt_root      : %GT_ROOT%
 echo   test_root    : %MIND_TESTS%
 echo   model        : helios-i2v
 echo   helios_py    : %HELIOS_VENV_PY%
+echo   variant      : %HELIOS_VARIANT%  (matches run_helios.bat --variant)
+echo   steps        : %MIND_NUM_INFERENCE_STEPS%  (per-variant default; override with MIND_NUM_INFERENCE_STEPS=N)
+echo   prompt suffix: %MIND_PROMPT_SUFFIX%  (override with MIND_PROMPT_SUFFIX=...)
 echo   fps          : %MIND_FPS%
 echo   log          : %LOG%
 echo ============================================================
@@ -69,15 +108,6 @@ if not defined MIND_START_INDEX set MIND_START_INDEX=0
 if not defined MIND_MIRROR_TEST  set MIND_MIRROR_TEST=1
 set MIRROR_ARG=
 if "%MIND_MIRROR_TEST%"=="1" set MIRROR_ARG=--mirror-test
-
-REM Detect whether the user passed --perspective in %*; if so, honor it (single
-REM perspective). Otherwise stage BOTH 1st_data and 3rd_data sequentially.
-echo %* | findstr /I /C:"--perspective" >nul
-if errorlevel 1 (
-    set "_PERSPECTIVES=1st_data 3rd_data"
-) else (
-    set "_PERSPECTIVES="
-)
 
 REM ---- start wall-clock + RAM/GPU sampling ---------------------------------
 for /f %%T in ('powershell -NoProfile -Command "[DateTime]::UtcNow.Ticks"') do set "_T_START=%%T"
@@ -96,24 +126,17 @@ echo 0 > "%_GPU_FILE%"
 start /b "" powershell -NoProfile -WindowStyle Hidden -Command "$peak=0; while ($true) { try { $m=(Get-Process python -ErrorAction SilentlyContinue | Measure-Object WorkingSet64 -Maximum).Maximum; if ($m -and $m -gt $peak) { $peak=$m; '{0} {1:N2}' -f $peak, ($peak/1GB) | Out-File -LiteralPath '%_METRICS_FILE%' -Force -Encoding ascii } } catch {}; Start-Sleep -Seconds 2 }"
 start /b "" powershell -NoProfile -WindowStyle Hidden -Command "$peak=0; while ($true) { try { $m=(nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits 2>$null | ForEach-Object { [int]$_.Trim() } | Measure-Object -Maximum).Maximum; if ($m -and $m -gt $peak) { $peak=$m; $peak | Out-File -LiteralPath '%_GPU_FILE%' -Force -Encoding ascii } } catch {}; Start-Sleep -Seconds 2 }"
 
-REM ---- staging: loop over perspectives (default both; single if overridden) -
-if defined _PERSPECTIVES (
-    for %%P in (!_PERSPECTIVES!) do (
-        echo.
-        echo --- staging perspective: %%P ---
-        "%PY%" "%~dp0run_dreamx.py" "%LOG%" "%PY%" "src\drive_helios_i2v.py" "--gt-root" "%GT_ROOT%" "--test-root" "%MIND_TESTS%" "--fps" "%MIND_FPS%" "--perspective" "%%P" "--start-index" "%MIND_START_INDEX%" %MIRROR_ARG% %*
-        if errorlevel 1 (
-            echo ERROR: drive_helios_i2v.py exited with !ERRORLEVEL! on perspective %%P
-            goto :stop_samplers
-        )
-    )
-) else (
-    REM user passed --perspective explicitly; honor it (single invocation, no default)
-    "%PY%" "%~dp0run_dreamx.py" "%LOG%" "%PY%" "src\drive_helios_i2v.py" "--gt-root" "%GT_ROOT%" "--test-root" "%MIND_TESTS%" "--fps" "%MIND_FPS%" "--start-index" "%MIND_START_INDEX%" %MIRROR_ARG% %*
-    if errorlevel 1 (
-        echo ERROR: drive_helios_i2v.py exited with !ERRORLEVEL!
-        goto :stop_samplers
-    )
+REM ---- staging: ONE worker process handles BOTH perspectives --------------
+REM drive_helios_i2v.py spawns a single persistent Helios worker that loads the
+REM model once and iterates the whole manifest with no further reloads. With no
+REM --perspective it stages both 1st_data + 3rd_data in that one process; if the
+REM caller passes --perspective in %* the driver filters to it. Either way the
+REM model loads exactly once. Do NOT loop perspectives here -- that respawns the
+REM worker and reloads the model per perspective.
+"%PY%" "%~dp0run_dreamx.py" "%LOG%" "%PY%" "src\drive_helios_i2v.py" "--gt-root" "%GT_ROOT%" "--test-root" "%MIND_TESTS%" "--fps" "%MIND_FPS%" "--start-index" "%MIND_START_INDEX%" "--num-inference-steps" "%MIND_NUM_INFERENCE_STEPS%" "--prompt-suffix" "%MIND_PROMPT_SUFFIX%" %_LOW_VRAM_DEFAULT% %MIRROR_ARG% %*
+if errorlevel 1 (
+    echo ERROR: drive_helios_i2v.py exited with !ERRORLEVEL!
+    goto :stop_samplers
 )
 set "EXIT_CODE=0"
 goto :after_staging
