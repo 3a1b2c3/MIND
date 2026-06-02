@@ -358,6 +358,22 @@ def run_persistent(samples: list[dict], args: argparse.Namespace, work_dir: Path
         for err in failures[:5]:
             print(f"  {err[:200]}")
         return 1
+    if rc != 0:
+        # Nonzero exit but NO per-sample error recorded => the worker died below
+        # the Python level (native CUDA abort / OOM kill / OS kill). Surface the
+        # in-flight sample from the status snapshot so the log says WHICH sample
+        # crashed it; the [mem] curve + faulthandler traceback are above.
+        crashed_on = c_done = c_total = "?"
+        try:
+            snap = json.loads(status_path.read_text(encoding="utf-8"))
+            crashed_on = snap.get("current", "?")
+            c_done, c_total = snap.get("done", "?"), snap.get("total", "?")
+        except (OSError, json.JSONDecodeError):
+            pass
+        print("--- worker terminated WITHOUT a Python error "
+              "(likely native CUDA / OOM crash) ---")
+        print(f"--- last in-flight sample: {crashed_on}  (completed {c_done}/{c_total}) ---")
+        print("--- check the [mem] VRAM curve and any faulthandler traceback above ---")
     return rc
 
 
