@@ -92,27 +92,29 @@ def mind_actions_to_dreamx(action_data: list[dict]) -> tuple[list[str], list[int
             speeds.append(4)
             continue
         thresh = max(1, int(0.3 * len(chunk)))
-        ws_pos = sum(1 for d in chunk if d.get("ws", 0) > 0)
-        ws_neg = sum(1 for d in chunk if d.get("ws", 0) < 0)
-        ad_pos = sum(1 for d in chunk if d.get("ad", 0) > 0)
-        ad_neg = sum(1 for d in chunk if d.get("ad", 0) < 0)
-        ud_pos = sum(1 for d in chunk if d.get("ud", 0) > 0)
-        ud_neg = sum(1 for d in chunk if d.get("ud", 0) < 0)
-        lr_pos = sum(1 for d in chunk if d.get("lr", 0) > 0)
-        lr_neg = sum(1 for d in chunk if d.get("lr", 0) < 0)
-
+        # MIND axes are TRI-STATE (0=none, 1=dir A, 2=dir B), NOT signed: every
+        # value is 0/1/2, so the old `>0`/`<0` test never saw direction B and
+        # collapsed each axis to its first key. Decode value==1 vs value==2 and
+        # map both directions to DreamX keys (keyboard convention; verified vs the
+        # GT actor_pos/actor_rpy for ws/ud/lr):
+        #   ws 1->w forward   2->s back
+        #   ad 1->a left      2->d right
+        #   ud 1->i pitch-up  2->k pitch-down
+        #   lr 1->j yaw-left  2->l yaw-right
+        axes = (("ws", "w", "s"), ("ad", "a", "d"), ("ud", "i", "k"), ("lr", "j", "l"))
         keys: list[str] = []
-        if ws_pos >= thresh: keys.append("w")
-        elif ws_neg >= thresh: keys.append("s")
-        if ad_pos >= thresh: keys.append("d")
-        elif ad_neg >= thresh: keys.append("a")
-        if ud_pos >= thresh: keys.append("i")
-        elif ud_neg >= thresh: keys.append("k")
-        if lr_pos >= thresh: keys.append("l")
-        elif lr_neg >= thresh: keys.append("j")
+        per_axis_active = []
+        for axis, key1, key2 in axes:
+            c1 = sum(1 for d in chunk if d.get(axis, 0) == 1)
+            c2 = sum(1 for d in chunk if d.get(axis, 0) == 2)
+            per_axis_active.append(c1 + c2)
+            if c1 >= thresh and c1 >= c2:
+                keys.append(key1)
+            elif c2 >= thresh:
+                keys.append(key2)
 
         seq.append("".join(keys) if keys else "w")
-        active = max(ws_pos + ws_neg, ad_pos + ad_neg, ud_pos + ud_neg, lr_pos + lr_neg)
+        active = max(per_axis_active) if per_axis_active else 0
         speeds.append(min(8, max(2, int(active * 6 / max(1, len(chunk))))))
     return seq, speeds
 
