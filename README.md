@@ -277,10 +277,10 @@ MIND-Data
     "data": [
         {
             "time": [int] frame index
-            "ws": [int] 0: move forward, 1: move backward
-            "ad": [int] 0: move left, 1: move right
-            "ud": [int] 0: look up, 1: look down
-            "lr": [int] 0: look left, 1: look right
+            "ws": 0: none, 1: move forward,  2: move backward
+            "ad": 0: none, 1: move left,     2: move right
+            "ud": 0: none, 1: look up,       2: look down
+            "lr": 0: none, 1: look left,     2: look right
             "actor_pos": {
                 "x": [float] the x-coordinate of the character
                 "y": [float] the y-coordinate of the character
