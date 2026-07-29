@@ -7,11 +7,11 @@
 :: model every iteration -- a non-starter at ~100 samples.
 ::
 :: Two flashdreams-lingbot slugs are supported:
-::   lingbot-world-fast        (Wan VAE decoder, 4-step) -- default
-::   lingbot-world-fast-flash  (LightTAE decoder, tighter streaming window)
+::   lingbot-world-fast                       (Wan VAE decoder, 4-step) -- default
+::   lingbot-world-fast-taehv-window15-sink3  (LightTAE decoder, tighter streaming window)
 ::
 :: Set the slug via LINGBOT_SLUG env var:
-::   set LINGBOT_SLUG=lingbot-world-fast-flash
+::   set LINGBOT_SLUG=lingbot-world-fast-taehv-window15-sink3
 ::
 :: Output mp4 fps is fixed at 24 (matches MIND-Data ground truth).
 ::
@@ -44,6 +44,19 @@ set TORCHDYNAMO_DISABLE=1
 set HF_HUB_OFFLINE=1
 set TRANSFORMERS_OFFLINE=1
 
+:: lingbot-world-fast (~74GB) is already cached; skip flashdreams' 200GB disk preflight
+:: (it checks free space before reusing the cache and would otherwise abort on a full C:).
+set FLASHDREAMS_MIN_CACHE_FREE_GB=0
+
+:: Serialize shard download. 16 parallel processes each load torch and segfault on Windows
+:: (access violation, exit -1073741819 / 0xC0000005). 1 worker = serial = safe.
+set FLASHDREAMS_HF_SHARD_DOWNLOAD_WORKERS=1
+
+:: Disable hf-xet (Rust downloader) -- it access-violations on Windows during shard
+:: resolution, which still crashed even with the in-process serial download.
+set HF_HUB_DISABLE_XET=1
+set HF_XET_HIGH_PERFORMANCE=0
+
 :: Strip ambient venv state -- we're spawning into flashdreams's uv env, not MIND's.
 set "VIRTUAL_ENV="
 set "PYTHONHOME="
@@ -51,8 +64,14 @@ set "PYTHONPATH="
 set "UV_PYTHON="
 set "UV_PROJECT_ENVIRONMENT="
 
+:: Pin lingbot to Python 3.10 (uv defaults the workspace to 3.13; we avoid 3.12/3.13).
+:: First run on 3.10 rebuilds the env (one-time, heavy). If a workspace member requires
+:: >3.10 and resolution fails, remove this line -- the in-process shard patch already
+:: makes 3.13 work, so the pin is optional.
+set "UV_PYTHON=3.10"
+
 set "UV_EXE=C:\Users\kschmid\.local\bin\uv.exe"
-set "FLASHDREAMS=C:\workspace\world\flashdreams"
+set "FLASHDREAMS=C:\workspace\world\flashdream_public"
 set "DRIVE_PY=%~dp0src\drive_lingbot_flash.py"
 
 if not defined GT_ROOT    set GT_ROOT=C:\workspace\world\MIND-Data
@@ -60,7 +79,7 @@ if not defined MIND_TESTS set MIND_TESTS=C:\workspace\world\MIND-tests
 if not defined LINGBOT_SLUG set LINGBOT_SLUG=lingbot-world-fast
 
 set MODEL_NAME=lingbot-flash
-if /I "%LINGBOT_SLUG%"=="lingbot-world-fast-flash" set MODEL_NAME=lingbot-flash-flash
+if /I "%LINGBOT_SLUG%"=="lingbot-world-fast-taehv-window15-sink3" set MODEL_NAME=lingbot-flash-taehv
 
 set LOG=%~dp0drive_lingbot_flash.log
 
@@ -95,10 +114,21 @@ if not defined MIND_MIRROR_TEST set MIND_MIRROR_TEST=1
 set MIRROR_ARG=
 if "%MIND_MIRROR_TEST%"=="1" set MIRROR_ARG=--mirror-test
 
+:: Perspective: default BOTH (1st_data + 3rd_data). Override a single perspective
+:: with  set MIND_PERSPECTIVE=1st_data   (or 3rd_data). The driver's gather_samples
+:: iterates both perspectives when --perspective is omitted.
+set PERSP_ARG=
+set SCORE_PERSON=both
+if /I "%MIND_PERSPECTIVE%"=="1st_data" set PERSP_ARG=--perspective 1st_data
+if /I "%MIND_PERSPECTIVE%"=="1st_data" set SCORE_PERSON=1st
+if /I "%MIND_PERSPECTIVE%"=="3rd_data" set PERSP_ARG=--perspective 3rd_data
+if /I "%MIND_PERSPECTIVE%"=="3rd_data" set SCORE_PERSON=3rd
+
 :: Run the driver INSIDE flashdreams's uv env so lingbot.* + flashdreams.* import.
 :: cd into the flashdreams repo so uv resolves the workspace correctly.
 pushd "%FLASHDREAMS%"
-"!UV_EXE!" run --package flashdreams-lingbot python "%DRIVE_PY%" --gt-root "%GT_ROOT%" --test-root "%MIND_TESTS%" --model-name "%MODEL_NAME%" --slug "%LINGBOT_SLUG%" --fps %MIND_FPS% --perspective 1st_data %MIRROR_ARG% %*
+if not defined LINGBOT_LIMIT set LINGBOT_LIMIT=30
+"!UV_EXE!" run --with psutil --package flashdreams-lingbot python "%DRIVE_PY%" --gt-root "%GT_ROOT%" --test-root "%MIND_TESTS%" --model-name "%MODEL_NAME%" --slug "%LINGBOT_SLUG%" --fps %MIND_FPS% --limit %LINGBOT_LIMIT% %PERSP_ARG% %MIRROR_ARG% %*
 set EXIT_CODE=%ERRORLEVEL%
 popd
 
@@ -116,7 +146,9 @@ echo.
 
 if not defined MIND_METRICS set MIND_METRICS=lcm,visual,dino,action,gsc
 if "%MIND_METRICS%"=="" set MIND_METRICS=lcm,visual,dino,action,gsc
-call "%~dp0run_mind.bat" %MODEL_NAME% "%MIND_METRICS%"
+if not defined MIND_GPUS set MIND_GPUS=1
+:: Score the same perspective(s) we generated (default both 1st + 3rd).
+call "%~dp0run_mind.bat" %MODEL_NAME% "%MIND_METRICS%" %MIND_GPUS% %SCORE_PERSON%
 
 set SCORE_EXIT=%ERRORLEVEL%
 if not %SCORE_EXIT%==0 (

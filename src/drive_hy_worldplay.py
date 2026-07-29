@@ -30,6 +30,7 @@ import argparse
 import json
 import os
 import shutil
+import socket
 import subprocess
 import sys
 import time
@@ -39,6 +40,22 @@ import av
 
 from utils.mirror_test_utils import MIRROR_ACTIONS, MIRROR_DEFAULT_ACTION, gather_mirror_samples
 from utils.stats_logger import log_mp4
+
+
+def _free_master_port() -> str:
+    """Pick an OS-assigned free TCP port for c10d's TCPStore.
+
+    Hardcoding MASTER_PORT=29500 fails intermittently on Windows: a lingering
+    prior subprocess holds it (WSAEADDRINUSE 10048) or it lands in a Hyper-V/WSL
+    reserved range (WSAEACCES 10013). Binding to port 0 lets the OS hand back a
+    guaranteed-free, non-reserved port for each generate.py invocation.
+    """
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        s.bind(("127.0.0.1", 0))
+        return str(s.getsockname()[1])
+    finally:
+        s.close()
 
 TEST_TYPES = ("action_space_test", "mem_test")
 PERSPECTIVES = ("1st_data", "3rd_data")
@@ -251,6 +268,10 @@ def run_one(sample: dict, args, hy_worldplay_repo: Path, hy_worldplay_py: Path,
         pose_string = actions_to_pose_string(events, mark_time, args.video_length)
 
     out.parent.mkdir(parents=True, exist_ok=True)
+    prompt = sample.get(
+        "prompt",
+        _PROMPT_VARIANTS.get(getattr(args, "prompt_variant", "default"), _DEFAULT_PROMPT),
+    )
     # generate.py writes gen.mp4 to the directory passed via --output_path.
     cmd = [
         str(hy_worldplay_py), "-X", "utf8",
@@ -258,7 +279,7 @@ def run_one(sample: dict, args, hy_worldplay_repo: Path, hy_worldplay_py: Path,
         "--model_path", model_path,
         "--action_ckpt", action_ckpt,
         "--model_type", "ar",
-        "--prompt", sample.get("prompt", _DEFAULT_PROMPT),
+        "--prompt", prompt,
         "--image_path", str(frame_png),
         "--resolution", args.resolution,
         "--aspect_ratio", args.aspect_ratio,
@@ -279,6 +300,29 @@ def run_one(sample: dict, args, hy_worldplay_repo: Path, hy_worldplay_py: Path,
         "--transformer_resident_ar_rollout", "false",
         "--with-ui", "false",  # MIND scoring doesn't want UI overlay
     ]
+
+    run_cwd = str(hy_worldplay_repo)
+    if getattr(args, "backend", "generate") == "flashdreams":
+        # Drive the flashdreams hy_worldplay runner instead of upstream generate.py.
+        # Reuses MIND's extracted first frame + pose string; the runner self-resolves
+        # the distilled Wan2.2-5B checkpoint (no HunyuanVideo-1.5 base / byT5 / siglip /
+        # generate.py distributed mess). It writes <out.parent>/hy-worldplay-wan-i2v-5b.mp4.
+        uv = os.environ.get("UV_EXE", r"C:\Users\kschmid\.local\bin\uv.exe")
+        fd_repo = str(getattr(args, "flashdreams_repo", r"C:\workspace\world\flashdream_public"))
+        cmd = [
+            uv, "run", "--project", fd_repo, "--package", "flashdreams-hy_worldplay",
+            "flashdreams-run", "hy-worldplay-wan-i2v-5b",
+            "--image-path", str(frame_png),
+            "--pose", pose_string,
+            "--prompt", prompt,
+            "--num-chunk", str(getattr(args, "num_chunk", 4)),
+            "--pixel-height", str(args.height),
+            "--pixel-width", str(args.width),
+            "--fps", str(args.fps),
+            "--seed", str(args.seed),
+            "--output-dir", str(out.parent),
+        ]
+        run_cwd = fd_repo
 
     print(f"\n=== {sample['perspective']}/{sample['test_type']}/{sample['gt_name']} ===")
     print(f"  pose:  {pose_string}")
@@ -311,25 +355,39 @@ def run_one(sample: dict, args, hy_worldplay_repo: Path, hy_worldplay_py: Path,
     env.setdefault("WORLD_SIZE", "1")
     env.setdefault("RANK", "0")
     env.setdefault("LOCAL_RANK", "0")
-    env.setdefault("MASTER_ADDR", "127.0.0.1")
-    env.setdefault("MASTER_PORT", "29500")
+    # Force (not setdefault): a stale MASTER_ADDR=kubernetes.docker.internal from a
+    # Docker/k8s shell env makes c10d connect to a bogus host -> 0xC0000005 crash.
+    env["MASTER_ADDR"] = "127.0.0.1"
+    # Fresh free port per subprocess: 29500 intermittently fails on Windows with
+    # WSAEADDRINUSE (10048, lingering process) or WSAEACCES (10013, reserved range).
+    env["MASTER_PORT"] = _free_master_port()
     env["PYTHONPATH"] = str(hy_worldplay_repo)
 
     t0 = time.perf_counter()
-    rc = subprocess.call(cmd, cwd=str(hy_worldplay_repo), env=env)
+    rc = subprocess.call(cmd, cwd=run_cwd, env=env)
     elapsed = time.perf_counter() - t0
     print(f"  rc={rc}  elapsed={elapsed:.1f}s")
 
     # generate.py writes gen.mp4 (and optionally gen_sr.mp4) into --output_path.
     # MIND expects video.mp4 at the sample dir.
-    gen = out.parent / "gen.mp4"
+    gen = out.parent / ("hy-worldplay-wan-i2v-5b.mp4"
+                        if getattr(args, "backend", "generate") == "flashdreams"
+                        else "gen.mp4")
     if rc == 0 and gen.exists():
         gen.replace(out)
         # Drop the SR variant if it exists; MIND scores the base video.
         sr = out.parent / "gen_sr.mp4"
         if sr.exists():
             sr.unlink()
-        log_mp4(args.model_name, sample["perspective"], sample["test_type"], sample["gt_name"], out)
+        # Fail if the staged mp4 is empty/truncated: generation can exit 0 but write
+        # a 0-byte or header-only file (no frames). A real 480p clip is many KB, so
+        # anything under 1 KB is treated as a failed/empty render and not logged.
+        size = out.stat().st_size if out.exists() else 0
+        if size < 1024:
+            print(f"  WARN: staged mp4 is empty/truncated ({size} bytes): {out}")
+            rc = 4
+        else:
+            log_mp4(args.model_name, sample["perspective"], sample["test_type"], sample["gt_name"], out)
     elif rc == 0 and not out.exists():
         print(f"  WARN: rc=0 but no gen.mp4 at {gen}; not staged.")
         rc = 3
@@ -341,12 +399,31 @@ _DEFAULT_PROMPT = (
     "while the camera tracks forward through corridors and rooms."
 )
 
+# Selectable default-prompt styles (used when a sample has no explicit "prompt").
+# Add new weather/style variants here; expose them via --prompt-variant.
+_PROMPT_VARIANTS = {
+    "default": _DEFAULT_PROMPT,
+    "cartoony": (
+        "A first-person view exploring a vibrant, colorful cartoon-style 3D "
+        "environment, the camera tracking forward through whimsical stylized "
+        "corridors and rooms as bright cartoon rain falls, with bold outlines, "
+        "saturated candy colors, and a playful animated look."
+    ),
+}
+
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--gt-root", type=Path, required=True, help="MIND-Data root")
     parser.add_argument("--test-root", type=Path, required=True, help="Where to put generated test videos")
     parser.add_argument("--model-name", default="hy-worldplay", help="Subfolder name under test-root")
+    parser.add_argument("--backend", choices=["generate", "flashdreams"], default="generate",
+                        help="'generate' = upstream hyvideo/generate.py (HunyuanVideo-1.5 base); "
+                             "'flashdreams' = flashdreams-run hy-worldplay-wan-i2v-5b (distilled Wan2.2-5B, cleaner)")
+    parser.add_argument("--flashdreams-repo", type=Path, default=Path(r"C:\workspace\world\flashdream_public"),
+                        help="flashdreams repo root (for --backend flashdreams)")
+    parser.add_argument("--num-chunk", type=int, default=4,
+                        help="flashdreams AR chunks (4 latents each, ~16 frames/chunk)")
     parser.add_argument("--hy-worldplay-repo", type=Path, required=True,
                         help=r"Path to HY-WorldPlay repo (e.g. C:\workspace\world\HY-WorldPlay)")
     parser.add_argument("--hy-worldplay-py", type=Path, required=True,
@@ -369,6 +446,9 @@ def main() -> int:
                         "Must satisfy ((L-1)//4 + 1) %% 4 == 0. Valid: 13, 29, 45, 61, 77, 93, 109, 125.")
     parser.add_argument("--resolution", default="480p", help="HY-WorldPlay resolution bucket (only 480p supported)")
     parser.add_argument("--aspect-ratio", default="16:9")
+    parser.add_argument("--prompt-variant", choices=list(_PROMPT_VARIANTS), default="default",
+                        help="Default prompt style when a sample has no explicit prompt "
+                             "('cartoony' = colorful cartoon look with rain).")
     parser.add_argument("--width", type=int, default=624,
                         help="Frame width. 624x352 keeps a 5090 (32 GB) clear of the VRAM cliff at the default 4 AR blocks.")
     parser.add_argument("--height", type=int, default=352)
@@ -432,7 +512,19 @@ def main() -> int:
             return 0
         samples = samples[args.start_index:]
     if args.limit:
-        samples = samples[: args.limit]
+        # Cap per (perspective, test_type) instead of slicing the flat list:
+        # mirror_test samples are appended last, so a flat samples[:limit] truncated
+        # them off entirely (mirror_test was never generated). Now each test_type
+        # (mem/action/mirror) gets up to --limit samples per perspective.
+        _seen: dict = {}
+        _capped = []
+        for _s in samples:
+            _k = (_s["perspective"], _s["test_type"])
+            _n = _seen.get(_k, 0)
+            if _n < args.limit:
+                _capped.append(_s)
+                _seen[_k] = _n + 1
+        samples = _capped
 
     if not samples:
         print("No samples matched.")
@@ -449,14 +541,27 @@ def main() -> int:
         rc = run_one(s, args, hy_worldplay_repo, hy_worldplay_py,
                      args.model_path, args.action_ckpt)
         if rc != 0:
-            failures.append(f"{s['perspective']}/{s['test_type']}/{s['gt_name']}")
+            name = f"{s['perspective']}/{s['test_type']}/{s['gt_name']}"
+            failures.append(name)
+            # Skip this sample and continue rather than aborting the whole run: a
+            # flaky per-video crash (e.g. 0xC0000005 access violation during the
+            # per-video HunyuanVideo checkpoint load under memory pressure) must not
+            # kill every remaining sample. The output mp4 isn't written, so a
+            # restartable re-run retries only the skipped items.
+            print(f"\n[skip-fail] no valid mp4 for {name} (rc={rc}); continuing to next sample.")
+            continue
 
     print()
     if failures:
-        print(f"FAILED ({len(failures)}):")
+        # Report but DON'T fail the run: skipped items have no mp4 written, so a
+        # restartable re-run retries exactly them. Returning 0 lets the caller
+        # (drive_hy_worldplay.bat) proceed to the next perspective instead of
+        # exiting on the first perspective that had any flaky crash.
+        print(f"SKIPPED/FAILED ({len(failures)}) -- will be retried on re-run:")
         for name in failures:
             print(f"  {name}")
-        return 1
+        print(f"Done. {len(samples) - len(failures)} produced, {len(failures)} skipped (retry via re-run).")
+        return 0
     print(f"Done. {len(samples)} sample(s) produced.")
     return 0
 

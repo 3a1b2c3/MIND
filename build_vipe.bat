@@ -29,8 +29,8 @@ setlocal enableextensions enabledelayedexpansion
 set "PY=%~dp0.venv\Scripts\python.exe"
 set "VIPE_DIR=%~dp0vipe"
 set "VS_VCVARS=C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvars64.bat"
-REM Pin CUDA Toolkit to 12.8 (matches torch+cu128).
-set "CUDA_HOME=C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.8"
+REM Pin CUDA Toolkit to 13.0 (matches torch 2.12+cu130 now in the MIND venv).
+set "CUDA_HOME=C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v13.0"
 set "CUDA_PATH=%CUDA_HOME%"
 set "PATH=%CUDA_HOME%\bin;%CUDA_HOME%\libnvvp;%PATH%"
 REM TORCH_CUDA_ARCH_LIST: include sm_120 so RTX 5090 SASS is baked into vipe_ext.pyd.
@@ -87,6 +87,10 @@ where nvcc 2>nul && nvcc --version | findstr /R "release"
     echo   uv pip install --python "%PY%" --no-build-isolation https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.7.13/flash_attn-2.8.3+cu128torch2.10-cp310-cp310-win_amd64.whl
     exit /b 1
 )
+
+echo.
+echo === Ensuring in-venv build deps (wheel/setuptools/ninja) for --no-build-isolation ===
+uv pip install --python "%PY%" wheel setuptools ninja
 
 echo.
 echo === Building ViPE editable into MIND venv ===

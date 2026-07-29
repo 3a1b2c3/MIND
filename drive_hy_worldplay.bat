@@ -59,6 +59,10 @@ if not defined MIND_MIRROR_TEST set MIND_MIRROR_TEST=1
 set MIRROR_ARG=
 if "%MIND_MIRROR_TEST%"=="1" set MIRROR_ARG=--mirror-test
 
+:: Default prompt style when a sample has no explicit prompt (default|cartoony).
+:: Override: set MIND_PROMPT_VARIANT=cartoony
+if not defined MIND_PROMPT_VARIANT set MIND_PROMPT_VARIANT=default
+
 echo ============================================================
 echo HY-WorldPlay staging into MIND-tests  ^|  model=%MODEL_NAME%  ^|  log=%LOG%
 echo ============================================================
@@ -69,19 +73,31 @@ echo   MODEL_PATH          : %MODEL_PATH%
 echo   AR_DISTILL_ACTION   : %AR_DISTILL_ACTION_MODEL_PATH%
 echo   fps                 : %MIND_FPS%
 echo   mirror_test         : %MIND_MIRROR_TEST%
+echo   prompt_variant      : %MIND_PROMPT_VARIANT%
 echo ============================================================
 
-"%PY%" "%~dp0run_dreamx.py" "%LOG%" "%PY%" "src\drive_hy_worldplay.py" "--gt-root" "%GT_ROOT%" "--test-root" "%MIND_TESTS%" "--model-name" "%MODEL_NAME%" "--hy-worldplay-repo" "%HY_WORLDPLAY_REPO%" "--hy-worldplay-py" "%HY_WORLDPLAY_PY%" "--model-path" "%MODEL_PATH%" "--action-ckpt" "%AR_DISTILL_ACTION_MODEL_PATH%" "--fps" "%MIND_FPS%" "--perspective" "1st_data" %MIRROR_ARG% %*
-set EXIT_CODE=%ERRORLEVEL%
-if not %EXIT_CODE%==0 (
-    echo.
-    echo ERROR: drive_hy_worldplay.py exited with %EXIT_CODE%
-    exit /b %EXIT_CODE%
+:: Perspective(s) + per-perspective sample cap. Default: BOTH (1st_data + 3rd_data),
+:: 50 samples each. drive_hy_worldplay.py's --limit slices AFTER the perspective
+:: filter, so a single both-perspective pass with --limit 50 would yield 50 total
+:: (all 1st). Run one pass per perspective to get 50 EACH. Override:
+::   set MIND_PERSPECTIVE=1st_data   (single perspective)   set HY_LIMIT=N
+if not defined HY_LIMIT set HY_LIMIT=50
+set PERSP_LIST=1st_data 3rd_data
+set SCORE_PERSON=both
+if /I "%MIND_PERSPECTIVE%"=="1st_data" ( set PERSP_LIST=1st_data & set SCORE_PERSON=1st )
+if /I "%MIND_PERSPECTIVE%"=="3rd_data" ( set PERSP_LIST=3rd_data & set SCORE_PERSON=3rd )
+
+for %%P in (%PERSP_LIST%) do (
+    echo. & echo === staging perspective %%P ^(limit %HY_LIMIT%^) === & echo.
+    "%PY%" "%~dp0run_dreamx.py" "%LOG%" "%PY%" "src\drive_hy_worldplay.py" "--gt-root" "%GT_ROOT%" "--test-root" "%MIND_TESTS%" "--model-name" "%MODEL_NAME%" "--hy-worldplay-repo" "%HY_WORLDPLAY_REPO%" "--hy-worldplay-py" "%HY_WORLDPLAY_PY%" "--model-path" "%MODEL_PATH%" "--action-ckpt" "%AR_DISTILL_ACTION_MODEL_PATH%" "--fps" "%MIND_FPS%" "--perspective" "%%P" "--limit" "%HY_LIMIT%" "--prompt-variant" "%MIND_PROMPT_VARIANT%" %MIRROR_ARG% %*
+    if errorlevel 1 ( echo. & echo ERROR: drive_hy_worldplay.py failed for %%P & exit /b 1 )
 )
 
-echo. & echo === Running scoring: run_mind.bat %MODEL_NAME% === & echo.
-:: Explicit metric list including gsc (mirror_test mp4s needed -- enabled above).
+echo. & echo === Running scoring: run_mind.bat %MODEL_NAME% %SCORE_PERSON% === & echo.
+:: Explicit metric list including gsc (mirror_test mp4s needed -- enabled above) and
+:: action (ViPE). Score the SAME perspective(s) we staged.
 if not defined MIND_METRICS set MIND_METRICS=lcm,visual,dino,action,gsc
 if "%MIND_METRICS%"=="" set MIND_METRICS=lcm,visual,dino,action,gsc
-call "%~dp0run_mind.bat" "%MODEL_NAME%" "%MIND_METRICS%"
+if not defined MIND_GPUS set MIND_GPUS=1
+call "%~dp0run_mind.bat" "%MODEL_NAME%" "%MIND_METRICS%" %MIND_GPUS% %SCORE_PERSON%
 exit /b %ERRORLEVEL%
