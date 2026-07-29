@@ -11,8 +11,10 @@ set "PY=%~dp0.venv\Scripts\python.exe"
 set "PAT=result_*.json"
 if not "%~1"=="" set "PAT=result_%~1*.json"
 
-set "JSONS="
-for %%J in ("%~dp0%PAT%") do set "JSONS=!JSONS! "%%~fJ""
-if not defined JSONS ( echo   no result files matching %PAT% & exit /b 1 )
-"%PY%" "%~dp0_scores_table.py" !JSONS!
+REM _scores_table.py prints ONE file; pass the NEWEST match (by mtime) so you see the
+REM latest run, not the oldest (which the glob returns first).
+set "NEWEST="
+for /f "delims=" %%J in ('dir /b /o-d "%~dp0%PAT%" 2^>nul') do if not defined NEWEST set "NEWEST=%~dp0%%J"
+if not defined NEWEST ( echo   no result files matching %PAT% & exit /b 1 )
+"%PY%" "%~dp0_scores_table.py" "%NEWEST%"
 endlocal

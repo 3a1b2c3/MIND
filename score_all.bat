@@ -15,7 +15,7 @@ set "PY=%~dp0.venv\Scripts\python.exe"
 set "TESTS=C:\workspace\world\MIND-tests"
 
 set "METRICS=%~1"
-if not defined METRICS set "METRICS=lcm,visual,dino"
+if not defined METRICS set "METRICS=lcm,visual,dino,action,gsc"
 set "GPUS=%~2"
 if not defined GPUS set "GPUS=1"
 set "PERSON=%~3"
