@@ -30,7 +30,7 @@ set "PY=%~dp0.venv\Scripts\python.exe"
 set "VIPE_DIR=%~dp0vipe"
 set "VS_VCVARS=C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvars64.bat"
 REM Pin CUDA Toolkit to 13.0 (matches torch 2.12+cu130 now in the MIND venv).
-set "CUDA_HOME=C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v13.0"
+set "CUDA_HOME=C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.8"
 set "CUDA_PATH=%CUDA_HOME%"
 set "PATH=%CUDA_HOME%\bin;%CUDA_HOME%\libnvvp;%PATH%"
 REM TORCH_CUDA_ARCH_LIST: include sm_120 so RTX 5090 SASS is baked into vipe_ext.pyd.

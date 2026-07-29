@@ -17,4 +17,13 @@ set "NEWEST="
 for /f "delims=" %%J in ('dir /b /o-d "%~dp0%PAT%" 2^>nul') do if not defined NEWEST set "NEWEST=%~dp0%%J"
 if not defined NEWEST ( echo   no result files matching %PAT% & exit /b 1 )
 "%PY%" "%~dp0_scores_table.py" "%NEWEST%"
+
+echo.
+echo ================= by perspective =================
+for %%P in (1st_data 3rd_data) do (
+    "%PY%" "%~dp0_split_persp.py" "%NEWEST%" %%P "%TEMP%\_mind_%%P.json" >nul 2>nul
+    echo --- %%P ---
+    "%PY%" "%~dp0_scores_table.py" "%TEMP%\_mind_%%P.json"
+    del "%TEMP%\_mind_%%P.json" 2>nul
+)
 endlocal
