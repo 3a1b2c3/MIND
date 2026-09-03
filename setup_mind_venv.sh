@@ -21,23 +21,24 @@ cd "$HERE"
 VENV="$HERE/.venv"
 PY="$VENV/bin/python"
 
-if ! command -v uv >/dev/null 2>&1; then
-  echo "ERROR: uv not found on PATH" >&2
+if ! command -v python3.10 >/dev/null 2>&1; then
+  echo "ERROR: python3.10 not found on PATH" >&2
   exit 1
 fi
 
 echo "[mind-setup] creating venv (Python 3.10)..."
-uv venv --python 3.10 "$VENV"
+python3.10 -m venv "$VENV"
 if [ ! -x "$PY" ]; then
   echo "ERROR: venv create failed" >&2
   exit 1
 fi
+"$PY" -m pip install --upgrade pip
 
 echo "[mind-setup] torch + torchvision (cu132, unpinned -- see script header)..."
-uv pip install --python "$PY" torch torchvision --index-url https://download.pytorch.org/whl/cu132
+"$PY" -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cu132
 
 echo "[mind-setup] MIND requirements (transformers 4.56, torchmetrics, lpips, pyiqa, clip, modelscope, av)..."
-uv pip install --python "$PY" -r envs/requirements.txt
+"$PY" -m pip install -r envs/requirements.txt
 
 echo
 echo "============================================================"
