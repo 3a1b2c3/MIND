@@ -21,13 +21,13 @@ cd "$HERE"
 VENV="$HERE/.venv"
 PY="$VENV/bin/python"
 
-if ! command -v python3.10 >/dev/null 2>&1; then
-  echo "ERROR: python3.10 not found on PATH" >&2
+if ! command -v python3 >/dev/null 2>&1; then
+  echo "ERROR: python3 not found on PATH" >&2
   exit 1
 fi
 
-echo "[mind-setup] creating venv (Python 3.10)..."
-python3.10 -m venv "$VENV"
+echo "[mind-setup] creating venv ($(python3 --version 2>&1))..."
+python3 -m venv "$VENV"
 if [ ! -x "$PY" ]; then
   echo "ERROR: venv create failed" >&2
   exit 1
