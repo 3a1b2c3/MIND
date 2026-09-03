@@ -12,5 +12,5 @@ REM ==========================================================================
 wsl -e bash -lc "cd /mnt/c/workspace/world/lingbot-world-v2; /home/kschmid/lingbot-venv/bin/python /mnt/c/workspace/world/MIND/src/drive_lingbot_v2.py %*"
 echo.
 echo Videos -^> C:\workspace\world\MIND-tests\lingbot-v2\
-echo Then score:  run_mind.bat --%% lingbot-v2 "lcm,visual,dino" 1 both
+echo Then score:  run_mind.bat --%% lingbot-v2 "lcm,visual,dino,action,gsc" 1 both
 endlocal

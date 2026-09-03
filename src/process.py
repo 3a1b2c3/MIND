@@ -214,6 +214,31 @@ def compute_metrics_single_gpu(task_queue, result_list, gt_root, test_root, dino
                         if action is not None:
                             result['action'] = action
 
+                    if 'gsc' in requested_metrics:
+                        tqdm.write(f"{prefix}: [5/5] Computing GSC metrics (mirror test)...")
+                        try:
+                            gsc_frames = real_time
+                            if gsc_frames % 2 == 1:
+                                tqdm.write(f"{prefix}: odd frame count {gsc_frames}, truncating last frame for gsc split")
+                                gsc_frames -= 1
+
+                            sample_reader = VideoStreamReader(os.path.join(test_dir, data_path, 'video.mp4'), start_frame=0, total_frames=gsc_frames)
+                            _, imgs = sample_reader.read_batch(gsc_frames)
+
+                            if gsc_frames > 0 and imgs is not None:
+                                origin_pred = imgs[:gsc_frames // 2]
+                                mirror_pred = torch.flip(imgs[gsc_frames // 2:], dims=[0])
+                                gsc = lcm_metric(origin_pred, mirror_pred, lpips_metric, ssim_metric, psnr_metric, process_batch_size, device)
+                                result['gsc'] = gsc
+                                tqdm.write(f"{prefix}: GSC computed successfully")
+
+                            del sample_reader
+                            torch.cuda.empty_cache()
+                        except Exception as e:
+                            tqdm.write(f"{prefix}: GSC calculation failed: {e}")
+                            import traceback as _tb
+                            tqdm.write(_tb.format_exc())
+
                     tqdm.write(f"{prefix}: Finish Task!")
 
             except KeyboardInterrupt:
@@ -295,7 +320,7 @@ def compute_metrics(gt_root, test_root, dino_path, output_path, requested_metric
                     all_data += [{'path': d, 'perspective': perspective, 'test_type': test_type }
                         for d in os.listdir(test_dir) if (perspective, test_type, d) not in resume_keys]
             else:
-                if 'lcm' in requested_metrics or 'visual' in requested_metrics or 'dino' in requested_metrics or 'action' in requested_metrics:
+                if 'lcm' in requested_metrics or 'visual' in requested_metrics or 'dino' in requested_metrics or 'action' in requested_metrics or 'gsc' in requested_metrics:
                     gt_dir = os.path.join(gt_root, perspective, 'test', test_type)
                     test_dir = os.path.join(test_root, perspective, test_type)
                     if not os.path.isdir(test_dir):

@@ -130,19 +130,26 @@ def main() -> int:
     ap.add_argument("--start-index", type=int, default=0)
     ap.add_argument("--limit", type=int, default=None)
     ap.add_argument("--quant", default=None)
-    ap.add_argument("--mirror-test", action="store_true", help="run the mirror_test (go-then-return)")
+    ap.add_argument("--mirror-test", action="store_true",
+                    help="drive ONLY the mirror_test (go-then-return); default drives normal + mirror")
+    ap.add_argument("--no-mirror", action="store_true",
+                    help="skip the mirror_test (drive only action_space + mem)")
     ap.add_argument("--mirror-action", default=MIRROR_DEFAULT_ACTION, choices=MIRROR_ACTIONS,
                     help="mirror trajectory (default 'w' = forward-out/back-return)")
     args = ap.parse_args()
 
     perspectives = (args.perspective,) if args.perspective else PERSPECTIVES
-    if args.mirror_test:
-        samples = [s for s in gather_mirror_samples(args.gt_root, args.mirror_action)
-                   if not args.perspective or s["perspective"] == args.perspective]
+    mirror = [s for s in gather_mirror_samples(args.gt_root, args.mirror_action)
+              if not args.perspective or s["perspective"] == args.perspective]
+    if args.mirror_test:                       # mirror only (back-compat)
+        samples = mirror
         print(f"[waypoint-mind] MIRROR test, action='{args.mirror_action}': {len(samples)} samples")
-    else:
+    else:                                      # DEFAULT: normal + mirror in one load-once session
         samples = gather_normal(args.gt_root, perspectives)
         print(f"[waypoint-mind] action_space + mem: {len(samples)} samples")
+        if not args.no_mirror:
+            samples = samples + mirror
+            print(f"[waypoint-mind] + MIRROR (action='{args.mirror_action}'): {len(mirror)} -> {len(samples)} total")
     samples = samples[args.start_index:]
     if args.limit:
         samples = samples[:args.limit]
