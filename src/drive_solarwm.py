@@ -13,9 +13,13 @@ from the sample's first frame with a generic prompt and lets the model
 generate whatever motion it wants.
 
 Consequence for scoring: lcm/visual/dino/avg_mse are still meaningful as a
-"does it hold scene identity/quality" check, but the `action` metric is
-meaningless here (there's nothing for it to measure control against) and
-should be excluded when scoring: run_mind.sh solarwm lcm,visual,dino 1 both
+"does it hold scene identity/quality" check, but `action` AND `gsc` are both
+meaningless here -- `action` has nothing to measure control against, and
+`gsc` (mirror-test consistency) assumes the model actually attempted the
+go-then-return trajectory it's scored against, which it never saw. This
+applies to --mirror-test runs too: they'll produce output, just not a
+meaningful gsc score. Exclude both when scoring:
+  run_mind.sh solarwm lcm,visual,dino 1 both
 
 LOAD-ONCE: h3_infer.py's --mind-batch (added alongside this driver) loads
 the pipeline ONCE and loops every sample in one process, same idea as

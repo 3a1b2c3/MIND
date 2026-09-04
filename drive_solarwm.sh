@@ -7,14 +7,18 @@
 # SolarWM's h3_infer.py drives the raw base MiniMax-H3 pipeline, which has NO
 # action-conditioning input at all -- this driver cannot make it follow
 # MIND's actions the way drive_abot.sh does. Only lcm/visual/dino/avg_mse are
-# meaningful here; the `action` metric is not. Score with:
+# meaningful here; `action` AND `gsc` (mirror-test consistency) are both
+# meaningless -- gsc scores a go-then-return trajectory this model never
+# saw, so --mirror-test runs still produce output but not a real gsc score.
+# Score with:
 #   run_mind.sh solarwm lcm,visual,dino 1 both
 #
 # LOAD-ONCE: builds a manifest and makes one h3_infer.py --mind-batch call --
 # the ~33B model loads once and loops every sample, same idea as drive_abot.sh.
 #
-#   drive_solarwm.sh --limit 2       smoke
-#   drive_solarwm.sh                 all 1st+3rd person
+#   drive_solarwm.sh --limit 2                smoke
+#   drive_solarwm.sh                          all 1st+3rd person
+#   drive_solarwm.sh --mirror-test            mirror clips (gsc not meaningful, see above)
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
