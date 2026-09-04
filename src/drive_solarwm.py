@@ -17,16 +17,18 @@ Consequence for scoring: lcm/visual/dino/avg_mse are still meaningful as a
 meaningless here (there's nothing for it to measure control against) and
 should be excluded when scoring: run_mind.sh solarwm lcm,visual,dino 1 both
 
-ALSO SLOW: h3_infer.py has no load-once/batch mode (unlike ABot's
---mind-batch) -- this driver subprocesses h3_infer.py once per sample, so
-the ~33B model reloads from disk every single sample. Expect this to be far
-slower than drive_abot.py. Use --limit for anything beyond a tiny smoke test.
+LOAD-ONCE: h3_infer.py's --mind-batch (added alongside this driver) loads
+the pipeline ONCE and loops every sample in one process, same idea as
+ABot's --mind-batch -- this driver builds a manifest and makes exactly one
+subprocess call, it does not reload the ~33B model per sample.
 
 Run via SolarWM's H3 venv (see drive_solarwm.sh) -- SOLARWM_ROOT/.venv-h3.
 """
 import argparse
 import json
+import shutil
 import subprocess
+import tempfile
 from pathlib import Path
 
 import imageio.v2 as imageio
@@ -105,49 +107,45 @@ def main() -> int:
     if args.limit:
         samples = samples[:args.limit]
 
-    tmp_root = args.test_root / args.model_name / "_tmp_frames"
-    tmp_root.mkdir(parents=True, exist_ok=True)
-
-    ran, skipped, failed = 0, 0, 0
+    work = Path(tempfile.mkdtemp(prefix="solarwm_mind_"))
+    manifest = []
+    skipped = 0
     for s in samples:
         out_dir = args.test_root / args.model_name / s["perspective"] / s["test_type"] / s["gt_name"]
         out_path = out_dir / "video.mp4"
         if out_path.exists():
             skipped += 1
             continue
-        out_dir.mkdir(parents=True, exist_ok=True)
 
-        png = tmp_root / f"{s['perspective']}_{s['test_type']}_{s['gt_name']}.png"
+        png = work / f"{s['perspective']}_{s['test_type']}_{s['gt_name']}.png"
         src_png = s.get("frame_png_src")
         if src_png is not None:
-            import shutil
             shutil.copy(str(src_png), str(png))
         elif not first_frame(s["video"], png):
-            failed += 1
             continue
 
-        cmd = [
-            str(py), str(infer),
-            "--prompt", GENERIC_PROMPT,
-            "--image", str(png),
-            "--num-frames", str(args.num_frames),
-            "--steps", str(args.steps),
-            "--output-dir", str(out_dir),
-            "--name", "video",
-        ]
-        if args.model_path:
-            cmd += ["--model-path", args.model_path]
+        manifest.append({
+            "prompt": GENERIC_PROMPT,
+            "image": str(png),
+            "num_frames": args.num_frames,
+            "steps": args.steps,
+            "out_dir": str(out_dir),
+            "name": "video",
+        })
 
-        print(f"[solarwm-mind] {s['perspective']}/{s['test_type']}/{s['gt_name']}", flush=True)
-        r = subprocess.run(cmd, cwd=str(args.solarwm_root))
-        if r.returncode != 0 or not out_path.exists():
-            print(f"[warn] generation failed for {s['gt_name']} (rc={r.returncode})")
-            failed += 1
-            continue
-        ran += 1
+    if not manifest:
+        print(f"[solarwm-mind] nothing to do ({skipped} already existed, or no samples)")
+        return 0
+    manifest_path = work / "manifest.json"
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    print(f"[solarwm-mind] {len(manifest)} samples ({skipped} skipped) -> one load-once h3_infer.py --mind-batch run")
 
-    print(f"[solarwm-mind] done: {ran} generated, {skipped} skipped (already existed), {failed} failed")
-    return 0
+    cmd = [str(py), str(infer), "--mind-batch", str(manifest_path)]
+    if args.model_path:
+        cmd += ["--model-path", args.model_path]
+    r = subprocess.run(cmd, cwd=str(args.solarwm_root))
+    print(f"[solarwm-mind] done (rc={r.returncode})")
+    return r.returncode
 
 
 if __name__ == "__main__":

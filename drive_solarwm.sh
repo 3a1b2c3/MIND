@@ -10,10 +10,10 @@
 # meaningful here; the `action` metric is not. Score with:
 #   run_mind.sh solarwm lcm,visual,dino 1 both
 #
-# ALSO SLOW: h3_infer.py has no load-once/batch mode -- the ~33B model
-# reloads from disk every sample. Always smoke-test with --limit first.
+# LOAD-ONCE: builds a manifest and makes one h3_infer.py --mind-batch call --
+# the ~33B model loads once and loops every sample, same idea as drive_abot.sh.
 #
-#   drive_solarwm.sh --limit 2       smoke (SLOW: full model reload per sample)
+#   drive_solarwm.sh --limit 2       smoke
 #   drive_solarwm.sh                 all 1st+3rd person
 set -euo pipefail
 
