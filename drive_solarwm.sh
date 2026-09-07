@@ -1,24 +1,27 @@
 #!/bin/bash
-# Drive SolarWM's MiniMax-H3 base pipeline (h3_infer.py) over MIND: seed each
-# sample's first frame with a generic prompt, write to MIND-tests/solarwm/.
-# Runs through SolarWM's own .venv-h3 venv.
+# Drive SolarWM's MiniMax-H3 over MIND. Default engine (camera) uses REAL
+# camera-conditioned generation: the trained Stage0.5 LoRA adapter +
+# h3_camera_infer.py, with each sample's real ws/ad/ud/lr action.json
+# converted directly into a [47,4,4] camera trajectory (genuine per-frame
+# conditioning, not a text hint). --engine text falls back to the original
+# uncoditioned base pipeline + text-paraphrase approach. Writes to
+# MIND-tests/solarwm/. Runs through SolarWM's own .venv-h3 venv.
 #
-# REAL LIMITATION (see src/drive_solarwm.py's docstring for the full story):
-# SolarWM's h3_infer.py drives the raw base MiniMax-H3 pipeline, which has NO
-# action-conditioning input at all -- this driver cannot make it follow
-# MIND's actions the way drive_abot.sh does. Only lcm/visual/dino/avg_mse are
-# meaningful here; `action` AND `gsc` (mirror-test consistency) are both
-# meaningless -- gsc scores a go-then-return trajectory this model never
-# saw, so --mirror-test runs still produce output but not a real gsc score.
-# Score with:
+# UNTESTED end to end (camera engine) -- see h3_camera_infer.py's own
+# docstring for the unverified camera axis/sign caveat, and
+# src/drive_solarwm.py's docstring for the full engine comparison. Only
+# lcm/visual/dino/avg_mse are trustworthy right now; `action` AND `gsc`
+# should be treated as noise until camera-engine output is manually
+# inspected and confirmed to follow the intended direction. Score with:
 #   run_mind.sh solarwm lcm,visual,dino 1 both
 #
-# LOAD-ONCE: builds a manifest and makes one h3_infer.py --mind-batch call --
-# the ~33B model loads once and loops every sample, same idea as drive_abot.sh.
+# LOAD-ONCE: builds a manifest and makes one --mind-batch call -- the model
+# loads once and loops every sample, same idea as drive_abot.sh.
 #
-#   drive_solarwm.sh --limit 2                smoke
-#   drive_solarwm.sh                          all 1st+3rd person
-#   drive_solarwm.sh --mirror-test            mirror clips (gsc not meaningful, see above)
+#   drive_solarwm.sh --limit 2                       smoke (camera engine)
+#   drive_solarwm.sh                                 all 1st+3rd person
+#   drive_solarwm.sh --engine text --limit 2          fallback (no real conditioning)
+#   drive_solarwm.sh --mirror-test                    mirror clips (gsc not meaningful, see above)
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -45,5 +48,5 @@ fi
 
 echo
 echo "Videos -> $MIND_TESTS/solarwm/"
-echo "Now score (action metric is meaningless here, exclude it):"
+echo "Now score (action AND gsc are unreliable here, exclude them):"
 echo "  run_mind.sh solarwm lcm,visual,dino 1 both"
