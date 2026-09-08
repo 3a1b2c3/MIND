@@ -27,7 +27,7 @@ from pathlib import Path
 
 import av
 
-ZING_REPO = Path(os.environ.get("ZING_REPO", r"C:\workspace\world\zing-world-model"))
+ZING_REPO = Path(os.environ.get("ZING_REPO", str(Path(__file__).resolve().parent.parent.parent / "zing-world-model")))
 DEFAULT_ZING_VENV_PY = ZING_REPO / ".venv" / "Scripts" / "python.exe"
 ZING_VENV_PY = Path(os.environ.get("ZING_VENV_PY", str(DEFAULT_ZING_VENV_PY)))
 

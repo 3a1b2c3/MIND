@@ -21,7 +21,7 @@ import imageio.v2 as imageio
 # src/ is sys.path[0] when run as a script, so this resolves like the other drivers.
 from utils.mirror_test_utils import MIRROR_ACTIONS, MIRROR_DEFAULT_ACTION, gather_mirror_samples
 
-ABOT_ROOT = Path(r"C:\workspace\world\ABot-World")
+ABOT_ROOT = Path(__file__).resolve().parent.parent.parent / "ABot-World"
 INFER = ABOT_ROOT / "scripts" / "inference.py"
 ABOT_PY = ABOT_ROOT / ".venv" / "Scripts" / "python.exe"
 PERSPECTIVES = ("1st_data", "3rd_data")
