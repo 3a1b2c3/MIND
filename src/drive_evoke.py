@@ -35,6 +35,7 @@ import av
 import numpy as np
 
 from utils.evoke_pose import default_intrinsic, mind_action_to_c2w
+from utils.scene_prompts import scene_prompt
 from utils.mirror_test_utils import MIRROR_ACTIONS, MIRROR_DEFAULT_ACTION, gather_mirror_samples
 from utils.stats_logger import log_mp4
 
@@ -89,43 +90,13 @@ def output_path(test_root: Path, model_name: str, sample: dict) -> Path:
     return test_root / model_name / sample["perspective"] / sample["test_type"] / sample["gt_name"] / "video.mp4"
 
 
-# Opt-in richer prompts, selected by --enhance-prompt. The baseline strings
-# below stay the default: MIND scores are only comparable across models when
-# every run uses the same text, so changing it silently would invalidate
-# comparisons against every previously scored model.
-#
-# These target the drift documented on --image-noise-sigma-min: a detail-heavy
-# sample wandered to unrelated content by frame 30 because the generic caption
-# gave the model nothing to hold onto, and the fix there was to anchor harder to
-# the seed image. This is the other half of that -- telling the model to keep
-# the scene it was given rather than leaving the text free to pull elsewhere.
-ENHANCED_PROMPTS = {
-    "1st_data": (
-        "First-person view exploring a 3D virtual environment. The camera moves "
-        "smoothly through the space already established in the opening frame, "
-        "holding its lighting, materials, colour palette and architecture "
-        "unchanged throughout. Surfaces keep their texture and geometry as the "
-        "viewpoint moves; no new locations, weather or times of day appear."
-    ),
-    "3rd_data": (
-        "Third-person view of a character exploring a 3D virtual environment. "
-        "The camera follows the character through the space already established "
-        "in the opening frame, holding its lighting, materials, colour palette "
-        "and architecture unchanged throughout. The character keeps a consistent "
-        "appearance and proportions; no new locations, weather or times of day "
-        "appear."
-    ),
-}
-
-
 def build_prompt(sample: dict, enhance: bool) -> str:
     """MIND's action.json carries no caption field -- fall back to a perspective-flavored default
-    (same convention as drive_helios_i2v.py's build_prompt)."""
-    if enhance:
-        return ENHANCED_PROMPTS["1st_data" if sample["perspective"] == "1st_data" else "3rd_data"]
-    if sample["perspective"] == "1st_data":
-        return "First-person view exploring a 3D virtual environment."
-    return "Third-person view of a character exploring a 3D virtual environment."
+    (same convention as drive_helios_i2v.py's build_prompt). Both the baseline
+    and the --enhance-prompt text live in utils/scene_prompts.py so the wording
+    can be iterated without touching driver logic, and so the other drivers can
+    share one text rather than growing their own variants."""
+    return scene_prompt(sample["perspective"], enhance)
 
 
 def _resolve_model_path() -> str:
