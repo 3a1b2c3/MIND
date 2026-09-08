@@ -135,7 +135,12 @@ def main() -> int:
     ap.add_argument("--cfg-scale", type=float, default=1.0)
     ap.add_argument("--start-index", type=int, default=0)
     ap.add_argument("--limit", type=int, default=None)
-    ap.add_argument("--mirror-test", action="store_true", help="run the mirror_test (go-then-return)")
+    # On by default: the mirror_test is the comparable-across-models measure
+    # (gsc splits the clip in half and time-flips the return leg against the
+    # outbound one), so it is the run worth getting by default. --no-mirror-test
+    # selects the action_space_test / mem_test sets instead.
+    ap.add_argument("--mirror-test", action=argparse.BooleanOptionalAction, default=True,
+                     help="run the mirror_test (go-then-return); default on")
     ap.add_argument("--mirror-action", default=MIRROR_DEFAULT_ACTION, choices=MIRROR_ACTIONS,
                      help="mirror trajectory (default 'w')")
     args = ap.parse_args()

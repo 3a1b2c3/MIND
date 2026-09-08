@@ -89,9 +89,40 @@ def output_path(test_root: Path, model_name: str, sample: dict) -> Path:
     return test_root / model_name / sample["perspective"] / sample["test_type"] / sample["gt_name"] / "video.mp4"
 
 
-def build_prompt(sample: dict) -> str:
+# Opt-in richer prompts, selected by --enhance-prompt. The baseline strings
+# below stay the default: MIND scores are only comparable across models when
+# every run uses the same text, so changing it silently would invalidate
+# comparisons against every previously scored model.
+#
+# These target the drift documented on --image-noise-sigma-min: a detail-heavy
+# sample wandered to unrelated content by frame 30 because the generic caption
+# gave the model nothing to hold onto, and the fix there was to anchor harder to
+# the seed image. This is the other half of that -- telling the model to keep
+# the scene it was given rather than leaving the text free to pull elsewhere.
+ENHANCED_PROMPTS = {
+    "1st_data": (
+        "First-person view exploring a 3D virtual environment. The camera moves "
+        "smoothly through the space already established in the opening frame, "
+        "holding its lighting, materials, colour palette and architecture "
+        "unchanged throughout. Surfaces keep their texture and geometry as the "
+        "viewpoint moves; no new locations, weather or times of day appear."
+    ),
+    "3rd_data": (
+        "Third-person view of a character exploring a 3D virtual environment. "
+        "The camera follows the character through the space already established "
+        "in the opening frame, holding its lighting, materials, colour palette "
+        "and architecture unchanged throughout. The character keeps a consistent "
+        "appearance and proportions; no new locations, weather or times of day "
+        "appear."
+    ),
+}
+
+
+def build_prompt(sample: dict, enhance: bool) -> str:
     """MIND's action.json carries no caption field -- fall back to a perspective-flavored default
     (same convention as drive_helios_i2v.py's build_prompt)."""
+    if enhance:
+        return ENHANCED_PROMPTS["1st_data" if sample["perspective"] == "1st_data" else "3rd_data"]
     if sample["perspective"] == "1st_data":
         return "First-person view exploring a 3D virtual environment."
     return "Third-person view of a character exploring a 3D virtual environment."
@@ -154,7 +185,7 @@ def run_persistent(samples: list[dict], args: argparse.Namespace, work_dir: Path
             "id": idx,
             "tag": f"{s['perspective']}/{s['test_type']}/{s['gt_name']}",
             "image": str(frame_png),
-            "prompt": build_prompt(s),
+            "prompt": build_prompt(s, args.enhance_prompt),
             "pose_npz": str(pose_npz),
             "pose_source_resolution": list(SOURCE_RESOLUTION),
             "pose_fps": 24,  # action.json ticks == video frames, both at 24fps (verified empirically)
@@ -285,6 +316,12 @@ def main() -> int:
                              "since there's no real caption to reinforce the actual scene content.")
     parser.add_argument("--image-noise-sigma-max", type=float, default=0.015,
                         help="Pipeline default is 0.135; see --image-noise-sigma-min.")
+    # Off by default on purpose: MIND scores only compare across models when
+    # every run uses the same prompt text, so an enhanced run is not comparable
+    # with the existing baseline numbers. Keep the two sets of results apart.
+    parser.add_argument("--enhance-prompt", action="store_true",
+                        help="use the longer scene-anchoring prompts instead of the one-line "
+                             "defaults; results are NOT comparable with baseline runs")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--mirror-test", action="store_true", help="Also generate mirror_test outputs (additive).")
     parser.add_argument("--mirror-only", action="store_true",

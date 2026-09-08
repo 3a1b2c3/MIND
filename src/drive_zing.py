@@ -45,6 +45,11 @@ ACTION_MAP = {
 
 # Matches the floor the other MIND drivers enforce (drive_evoke.py) so short samples stay generatable.
 MIN_FRAMES = 33
+# zing's VAE temporal compression factor, from config.vae.temporal_scale. The
+# request builder below always sets reference_frame_count=1, so the constraint
+# zing enforces -- (reference_frame_count + frames - 1) % temporal_scale == 0 --
+# reduces to num_frames being a multiple of this.
+VAE_TEMPORAL_SCALE = 4
 
 
 def extract_first_frame(video_path: Path, out_path: Path) -> None:
@@ -222,8 +227,12 @@ def main() -> int:
     parser.add_argument("--limit", type=int)
     parser.add_argument("--test-type", choices=TEST_TYPES)
     parser.add_argument("--perspective", choices=PERSPECTIVES)
-    # 97 frames / 352x640 is the low-res config proven out by the zing repo's own examples on this GPU.
-    parser.add_argument("--num-frames", type=int, default=97)
+    # 352x640 is the low-res config proven out by the zing repo's own examples
+    # on this GPU. The frame count has to be a multiple of the VAE's temporal
+    # scale, not the 97 those examples use: we always send
+    # reference_frame_count=1, so zing checks (1 + num_frames - 1) % 4, i.e.
+    # num_frames itself. 97 fails that; 96 is the nearest valid value below it.
+    parser.add_argument("--num-frames", type=int, default=96)
     parser.add_argument("--height", type=int, default=352)
     parser.add_argument("--width", type=int, default=640)
     parser.add_argument("--seed", type=int, default=0)
@@ -235,6 +244,18 @@ def main() -> int:
 
     if args.num_frames < MIN_FRAMES:
         print(f"ERROR: --num-frames must be >= {MIN_FRAMES}", file=sys.stderr)
+        return 2
+    # Checked here rather than left to zing, whose own message names neither the
+    # offending value nor a valid one:
+    #   ValueError: the total frame count must map exactly to VAE latent frames
+    # Every request this script builds carries reference_frame_count=1, so the
+    # constraint (reference + frames - 1) % temporal_scale reduces to
+    # num_frames % 4.
+    if args.num_frames % VAE_TEMPORAL_SCALE:
+        lower = args.num_frames - (args.num_frames % VAE_TEMPORAL_SCALE)
+        print(f"ERROR: --num-frames must be a multiple of {VAE_TEMPORAL_SCALE} "
+              f"(got {args.num_frames}); try {lower} or {lower + VAE_TEMPORAL_SCALE}.",
+              file=sys.stderr)
         return 2
     if not ZING_VENV_PY.exists():
         print(f"ERROR: zing venv python not found: {ZING_VENV_PY}", file=sys.stderr)
