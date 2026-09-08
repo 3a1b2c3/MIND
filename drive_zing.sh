@@ -41,11 +41,11 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$HERE"
 
 PY="$HERE/.venv/bin/python"
-GT_ROOT="$HERE/../MIND-Data"
-MIND_TESTS="$HERE/../MIND-tests"
+GT_ROOT="$(realpath -m "$HERE/../MIND-Data")"
+MIND_TESTS="$(realpath -m "$HERE/../MIND-tests")"
 LOG="$HERE/drive_zing.log"
 
-ZING_REPO="${ZING_REPO:-$HERE/../zing-world-model}"
+ZING_REPO="$(realpath -m "${ZING_REPO:-$HERE/../zing-world-model}")"
 ZING_VENV_PY="${ZING_VENV_PY:-$ZING_REPO/.venv/bin/python}"
 
 if [ ! -x "$PY" ]; then
