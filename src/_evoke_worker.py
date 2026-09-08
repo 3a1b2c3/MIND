@@ -62,7 +62,7 @@ os.environ.setdefault("PYTHONIOENCODING", "utf-8")
 os.environ.setdefault("CUDA_VISIBLE_DEVICES", "0")
 os.environ.setdefault("GEO_HIST_MAX_FRAMES", "720")
 
-_EVOKE_REPO = os.environ.get("EVOKE_REPO", r"C:\workspace\world\Evoke")
+_EVOKE_REPO = os.environ.get("EVOKE_REPO", str(Path(__file__).resolve().parent.parent.parent / "Evoke"))
 if _EVOKE_REPO not in sys.path:
     sys.path.insert(0, _EVOKE_REPO)
 

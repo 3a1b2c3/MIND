@@ -37,7 +37,7 @@ import av
 from utils.mirror_test_utils import MIRROR_ACTIONS, MIRROR_DEFAULT_ACTION, gather_mirror_samples
 from utils.stats_logger import log_mp4
 
-HELIOS_REPO = Path(r"C:\workspace\world\Helios")
+HELIOS_REPO = Path(__file__).resolve().parent.parent.parent / "Helios"
 HELIOS_INFER = HELIOS_REPO / "infer_helios.py"
 # Variant → HF repo, matches run_helios.bat default (HELIOS_VARIANT=base).
 # Override with HELIOS_VARIANT={base|mid|distilled} or HELIOS_HF_REPO=<repo>.

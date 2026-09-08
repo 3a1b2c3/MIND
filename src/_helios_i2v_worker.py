@@ -61,7 +61,7 @@ os.environ.setdefault("CUDA_VISIBLE_DEVICES", "0")
 # on cwd alone fails with ModuleNotFoundError. The driver passes the repo path
 # via env (HELIOS_REPO) to keep the worker portable -- fallback to the
 # canonical path if not set.
-_HELIOS_REPO = os.environ.get("HELIOS_REPO", r"C:\workspace\world\Helios")
+_HELIOS_REPO = os.environ.get("HELIOS_REPO", str(Path(__file__).resolve().parent.parent.parent / "Helios"))
 if _HELIOS_REPO not in sys.path:
     sys.path.insert(0, _HELIOS_REPO)
 

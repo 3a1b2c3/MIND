@@ -45,7 +45,7 @@ import av
 from utils.mirror_test_utils import MIRROR_ACTIONS, MIRROR_DEFAULT_ACTION, gather_mirror_samples
 from utils.stats_logger import log_mp4
 
-LINGBOT_REPO = Path(r"C:\workspace\world\lingbot-world")
+LINGBOT_REPO = Path(__file__).resolve().parent.parent.parent / "lingbot-world"
 # Path A: use generate_fast.py against the fast-mini-cam ckpt. The original
 # generate.py + base-cam-nf4 path failed on every sample (OSError: Error no
 # file named config.json) because lingbot's WanModel.from_pretrained looked
@@ -181,8 +181,8 @@ def run_one(sample: dict, test_root: Path, model_name: str, work_dir: Path,
 
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--gt-root", type=Path, default=Path(r"C:\workspace\world\MIND-Data"))
-    p.add_argument("--test-root", type=Path, default=Path(r"C:\workspace\world\MIND-tests"),
+    p.add_argument("--gt-root", type=Path, default=Path(__file__).resolve().parent.parent.parent / "MIND-Data")
+    p.add_argument("--test-root", type=Path, default=Path(__file__).resolve().parent.parent.parent / "MIND-tests",
                    help="Parent dir; outputs land at <test-root>/<model-name>/<perspective>/...")
     p.add_argument("--model-name", default="lingbot-fast", help="Subfolder name under test-root")
     p.add_argument("--work-dir", type=Path, default=None, help="Temp dir (default: <test-root>/.frames)")

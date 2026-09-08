@@ -31,7 +31,7 @@ import av
 from utils.mirror_test_utils import MIRROR_ACTIONS, MIRROR_DEFAULT_ACTION, gather_mirror_samples
 from utils.stats_logger import log_mp4
 
-DREAMX_REPO = Path(r"C:\workspace\world\DreamX-World")
+DREAMX_REPO = Path(__file__).resolve().parent.parent.parent / "DreamX-World"
 # Override via DREAMX_VENV_PY env var when DreamX-World's own .venv is missing
 # (e.g. share the MIND scoring venv if its torch stack is compatible).
 DREAMX_VENV_PY = Path(os.environ.get("DREAMX_VENV_PY", str(DREAMX_REPO / ".venv" / "Scripts" / "python.exe")))

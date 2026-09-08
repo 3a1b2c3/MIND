@@ -25,9 +25,9 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 
-DEFAULT_SRC = Path(r"C:\workspace\world\matrix3\Matrix-Game-3\output")
-DEFAULT_GT_ROOT = Path(r"C:\workspace\world\MIND-Data")
-DEFAULT_TEST_ROOT = Path(r"C:\workspace\world\MIND-tests\matrix-game-3")
+DEFAULT_SRC = REPO.parent / "matrix3" / "Matrix-Game-3" / "output"
+DEFAULT_GT_ROOT = REPO.parent / "MIND-Data"
+DEFAULT_TEST_ROOT = REPO.parent / "MIND-tests" / "matrix-game-3"
 DEFAULT_DINO_PATH = REPO / "dinov3_vitb16"
 DEFAULT_METRICS = "lcm,visual,dino"
 DEFAULT_VENV_PY = REPO / ".venv" / "Scripts" / "python.exe"

@@ -30,13 +30,13 @@ import av
 from utils.mirror_test_utils import MIRROR_ACTIONS, MIRROR_DEFAULT_ACTION, gather_mirror_samples
 from utils.stats_logger import log_mp4
 
-MATRIX2_REPO = Path(r"C:\workspace\world\matrix3\Matrix-Game-2")
+MATRIX2_REPO = Path(__file__).resolve().parent.parent.parent / "matrix3" / "Matrix-Game-2"
 MATRIX2_INFERENCE = MATRIX2_REPO / "inference.py"
 # pretrained_model_path holds Wan2.1_VAE.pth + the safetensors weights.
 MATRIX2_PRETRAINED = Path(
     os.environ.get(
         "MATRIX2_PRETRAINED",
-        r"C:\workspace\world\Matrix-Game\Matrix-Game-2\Matrix-Game-2.0",
+        str(Path(__file__).resolve().parent.parent.parent / "Matrix-Game" / "Matrix-Game-2" / "Matrix-Game-2.0"),
     )
 )
 # Override via MATRIX2_VENV_PY env var to use a dedicated matrix2 venv if

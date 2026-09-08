@@ -22,12 +22,13 @@ def _resolve_vipe_cli() -> str:
     found = _shutil.which("vipe")
     if found:
         return found
+    _siblings = Path(__file__).resolve().parent.parent.parent.parent
     candidates = [
         # MIND venv (preferred): torch 2.10 has sm_120 SASS so UniDepth's
         # F.linear / camera_layer no longer fails on RTX 5090.
-        r"C:\workspace\world\MIND\.venv\Scripts\vipe.exe",
+        str(_siblings / "MIND" / ".venv" / "Scripts" / "vipe.exe"),
         # DeepVerse venv (fallback): torch 2.7, action metric fails on sm_120.
-        r"C:\workspace\world\DeepVerse\.venv\Scripts\vipe.exe",
+        str(_siblings / "DeepVerse" / ".venv" / "Scripts" / "vipe.exe"),
     ]
     for c in candidates:
         if _os.path.exists(c):

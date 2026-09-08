@@ -40,7 +40,7 @@ from utils.stats_logger import log_mp4
 # FastVideo venv is the only place ``from fastvideo import VideoGenerator``
 # resolves with the matching torch + CUDA stack. Override with
 # ``MATRIX3D_VENV_PY`` if a sibling FastVideo install is preferred.
-DEFAULT_FASTVIDEO_VENV_PY = Path(r"C:\workspace\world\FastVideo\.venv\Scripts\python.exe")
+DEFAULT_FASTVIDEO_VENV_PY = Path(__file__).resolve().parent.parent.parent / "FastVideo" / ".venv" / "Scripts" / "python.exe"
 FASTVIDEO_VENV_PY = Path(os.environ.get("MATRIX3D_VENV_PY", str(DEFAULT_FASTVIDEO_VENV_PY)))
 
 WORKER_SCRIPT = Path(__file__).resolve().parent / "_matrix3_distilled_worker.py"

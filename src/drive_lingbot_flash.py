@@ -33,7 +33,7 @@ from fractions import Fraction
 from pathlib import Path
 
 # Make MIND's utils importable when running from flashdreams uv env.
-_MIND_SRC = Path(r"C:\workspace\world\MIND\src")
+_MIND_SRC = Path(__file__).resolve().parent
 if _MIND_SRC.exists() and str(_MIND_SRC) not in sys.path:
     sys.path.insert(0, str(_MIND_SRC))
 
@@ -226,8 +226,8 @@ def run_one(pipeline, sample: dict, test_root: Path, model_name: str, args, devi
 
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--gt-root", type=Path, default=Path(r"C:\workspace\world\MIND-Data"))
-    p.add_argument("--test-root", type=Path, default=Path(r"C:\workspace\world\MIND-tests"))
+    p.add_argument("--gt-root", type=Path, default=Path(__file__).resolve().parent.parent.parent / "MIND-Data")
+    p.add_argument("--test-root", type=Path, default=Path(__file__).resolve().parent.parent.parent / "MIND-tests")
     p.add_argument("--model-name", default="lingbot-flash")
     p.add_argument("--only", nargs="+")
     p.add_argument("--perspective", choices=PERSPECTIVES)

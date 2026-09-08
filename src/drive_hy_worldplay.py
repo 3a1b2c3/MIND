@@ -308,7 +308,7 @@ def run_one(sample: dict, args, hy_worldplay_repo: Path, hy_worldplay_py: Path,
         # the distilled Wan2.2-5B checkpoint (no HunyuanVideo-1.5 base / byT5 / siglip /
         # generate.py distributed mess). It writes <out.parent>/hy-worldplay-wan-i2v-5b.mp4.
         uv = os.environ.get("UV_EXE", r"C:\Users\kschmid\.local\bin\uv.exe")
-        fd_repo = str(getattr(args, "flashdreams_repo", r"C:\workspace\world\flashdream_public"))
+        fd_repo = str(getattr(args, "flashdreams_repo", Path(__file__).resolve().parent.parent.parent / "flashdream_public"))
         cmd = [
             uv, "run", "--project", fd_repo, "--package", "flashdreams-hy_worldplay",
             "flashdreams-run", "hy-worldplay-wan-i2v-5b",
@@ -420,7 +420,8 @@ def main() -> int:
     parser.add_argument("--backend", choices=["generate", "flashdreams"], default="generate",
                         help="'generate' = upstream hyvideo/generate.py (HunyuanVideo-1.5 base); "
                              "'flashdreams' = flashdreams-run hy-worldplay-wan-i2v-5b (distilled Wan2.2-5B, cleaner)")
-    parser.add_argument("--flashdreams-repo", type=Path, default=Path(r"C:\workspace\world\flashdream_public"),
+    parser.add_argument("--flashdreams-repo", type=Path,
+                        default=Path(__file__).resolve().parent.parent.parent / "flashdream_public",
                         help="flashdreams repo root (for --backend flashdreams)")
     parser.add_argument("--num-chunk", type=int, default=4,
                         help="flashdreams AR chunks (4 latents each, ~16 frames/chunk)")

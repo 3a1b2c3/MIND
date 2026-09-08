@@ -38,7 +38,7 @@ from utils.evoke_pose import default_intrinsic, mind_action_to_c2w
 from utils.mirror_test_utils import MIRROR_ACTIONS, MIRROR_DEFAULT_ACTION, gather_mirror_samples
 from utils.stats_logger import log_mp4
 
-EVOKE_REPO = Path(r"C:\workspace\world\Evoke")
+EVOKE_REPO = Path(__file__).resolve().parent.parent.parent / "Evoke"
 DEFAULT_EVOKE_VENV_PY = EVOKE_REPO / ".venv" / "Scripts" / "python.exe"
 EVOKE_VENV_PY = Path(os.environ.get("EVOKE_VENV_PY", str(DEFAULT_EVOKE_VENV_PY)))
 EVOKE_MODEL_PATH = os.environ.get("EVOKE_MODEL_PATH")  # resolved lazily in main() if unset
