@@ -27,6 +27,13 @@ from pathlib import Path
 
 import av
 
+from utils.mirror_test_utils import (
+    MIRROR_ACTIONS,
+    MIRROR_DEFAULT_ACTION,
+    fit_mirror_frames,
+    gather_mirror_samples,
+)
+
 ZING_REPO = Path(os.environ.get("ZING_REPO", str(Path(__file__).resolve().parent.parent.parent / "zing-world-model")))
 DEFAULT_ZING_VENV_PY = ZING_REPO / ".venv" / "Scripts" / "python.exe"
 ZING_VENV_PY = Path(os.environ.get("ZING_VENV_PY", str(DEFAULT_ZING_VENV_PY)))
@@ -118,8 +125,13 @@ def build_actions(action_json: Path, num_frames: int) -> list[list[int]]:
         rows.append(row)
     if not rows:
         rows = [[0] * len(ACTION_KEYS)]
+    # Pad with idle, not by repeating the final tick. On the main tests this
+    # never triggers -- their action.json carries thousands of ticks against a
+    # ~96-frame clip. It only fires on the mirror set, where repeating the last
+    # key runs the return leg far past the origin and makes gsc score an
+    # overshoot instead of a return.
     while len(rows) < num_frames:
-        rows.append(list(rows[-1]))
+        rows.append([0] * len(ACTION_KEYS))
     return rows
 
 
@@ -150,8 +162,16 @@ def build_messages(samples: list[dict], args: argparse.Namespace, work_dir: Path
         for sample in samples:
             sid = sample_id(sample)
             ref_png = frames_dir / f"{sid}.png"
-            extract_first_frame(sample["video"], ref_png)
-            actions = build_actions(sample["action"], args.num_frames)
+            src_png = sample.get("frame_png_src")
+            if src_png is not None:
+                # mirror_test seeds are already PNGs -- there is no source video
+                # to decode a first frame from.
+                ref_png.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy(str(src_png), str(ref_png))
+            else:
+                extract_first_frame(sample["video"], ref_png)
+            num_frames = sample["num_frames"]
+            actions = build_actions(sample["action"], num_frames)
             record = {
                 "schema_version": 2,
                 "sample_id": sid,
@@ -164,7 +184,7 @@ def build_messages(samples: list[dict], args: argparse.Namespace, work_dir: Path
                         "uri": str(ref_png),
                         "reference_frame_count": 1,
                         "output": {
-                            "frames": args.num_frames,
+                            "frames": num_frames,
                             "height": args.height,
                             "width": args.width,
                         },
@@ -239,7 +259,16 @@ def main() -> int:
     parser.add_argument("--work-dir", type=Path)
     parser.add_argument("--dry-run", action="store_true")
     # Accepted for parity with the other drive_*.bat wrappers, which pass it unconditionally.
-    parser.add_argument("--mirror-test", action="store_true")
+    # Additive and on by default. This flag previously existed but was never
+    # read anywhere in this file, so every --mirror-test run silently staged the
+    # ordinary sets and zing ended up with no mirror clips at all -- which left
+    # its gsc scored on ordinary footage rather than a go-then-return.
+    parser.add_argument("--mirror-test", action=argparse.BooleanOptionalAction, default=True,
+                        help="also stage the mirror_test (go-then-return) set; default on")
+    parser.add_argument("--mirror-only", action="store_true",
+                        help="stage ONLY the mirror set, skipping action_space/mem")
+    parser.add_argument("--mirror-action", default=MIRROR_DEFAULT_ACTION, choices=MIRROR_ACTIONS,
+                        help="mirror trajectory (default 'w')")
     args = parser.parse_args()
 
     if args.num_frames < MIN_FRAMES:
@@ -264,11 +293,36 @@ def main() -> int:
         print(f"ERROR: gt_root not found: {args.gt_root}", file=sys.stderr)
         return 2
 
-    samples = gather_samples(args.gt_root)
-    if args.perspective:
-        samples = [s for s in samples if s["perspective"] == args.perspective]
-    if args.test_type:
-        samples = [s for s in samples if s["test_type"] == args.test_type]
+    # Each pass carries its own frame count: the main sets use --num-frames,
+    # the mirror set is fitted to its trajectory so gsc's midpoint split lands
+    # on the turnaround. zing's constraint is a multiple of 4 and the mirror
+    # trajectory is 48 ticks, which already satisfies it -- so 48 frames map
+    # 1:1, turnaround at 24, split at 24.
+    samples: list[dict] = []
+    if not args.mirror_only:
+        main = gather_samples(args.gt_root)
+        if args.perspective:
+            main = [s for s in main if s["perspective"] == args.perspective]
+        if args.test_type:
+            main = [s for s in main if s["test_type"] == args.test_type]
+        for s in main:
+            s["num_frames"] = args.num_frames
+        samples.extend(main)
+        print(f"[zing-mind] main: {len(main)} samples @ {args.num_frames} frames")
+
+    if args.mirror_test or args.mirror_only:
+        mirror = [s for s in gather_mirror_samples(args.gt_root, args.mirror_action)
+                  if not args.perspective or s["perspective"] == args.perspective]
+        mirror_frames = args.num_frames
+        if mirror:
+            ticks = len(json.loads(mirror[0]["action"].read_text(encoding="utf-8"))["data"])
+            mirror_frames = fit_mirror_frames(ticks, VAE_TEMPORAL_SCALE)
+        for s in mirror:
+            s["num_frames"] = mirror_frames
+        samples.extend(mirror)
+        print(f"[zing-mind] mirror action='{args.mirror_action}': {len(mirror)} samples "
+              f"@ {mirror_frames} frames (split at {mirror_frames // 2})")
+
     samples = samples[args.start_index:]
     if args.limit:
         samples = samples[: args.limit]
