@@ -204,6 +204,51 @@ def run_one(png: Path, action_str: str, out_path: Path, args: argparse.Namespace
     return r.returncode
 
 
+def run_worker(pending: list[dict], work: Path, args: argparse.Namespace) -> int:
+    """Run every pending request through one persistent worker process.
+
+    Returns the number of clips generated. The worker reports per-request
+    outcomes in a results JSONL so one bad sample does not lose the batch.
+    """
+    manifest = work / "manifest.jsonl"
+    results = work / "results.jsonl"
+    status = work / "status.json"
+    with manifest.open("w", encoding="utf-8") as fh:
+        for req in pending:
+            fh.write(json.dumps(req) + "\n")
+
+    cmd = [
+        str(ECHO_PY), str(Path(__file__).resolve().parent / "_echo_worker.py"),
+        "--manifest", str(manifest),
+        "--results-path", str(results),
+        "--status-path", str(status),
+        "--checkpoint", str(args.checkpoint),
+        "--gemma-path", str(args.gemma_path),
+    ]
+    if args.width:
+        cmd += ["--width", str(args.width)]
+    if args.height:
+        cmd += ["--height", str(args.height)]
+
+    print(f"[echo-mind] worker: {len(pending)} request(s), one checkpoint load")
+    env = dict(os.environ, ECHO_WM_ROOT=str(ECHO_WM))
+    subprocess.run(cmd, cwd=str(ECHO_WM), env=env)
+
+    generated = 0
+    if results.exists():
+        for line in results.read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
+            rec = json.loads(line)
+            if rec.get("ok"):
+                generated += 1
+            else:
+                print(f"[echo-mind] sample failed: {rec.get('error')}")
+    if generated < len(pending):
+        print(f"[echo-mind] worker manifest/results kept for debugging: {work}")
+    return generated
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--gt-root", type=Path, required=True)
@@ -234,6 +279,12 @@ def main() -> int:
     ap.add_argument("--limit", type=int, default=None)
     ap.add_argument("--dry-run", action="store_true",
                     help="print the action string per sample and exit without loading the model")
+    # Load-once batch mode. inference_wm.py is a one-shot CLI, so the per-sample
+    # path reloads ~47.8 GB plus Gemma for every clip -- that dominated the wall
+    # clock (25-30h for a full pass, most of it reloading identical weights).
+    # _echo_worker.py builds the pipeline once and iterates.
+    ap.add_argument("--worker", action=argparse.BooleanOptionalAction, default=True,
+                    help="load the checkpoint once and batch all samples; default on")
     # Additive and on by default: one invocation stages the main sets AND the
     # mirror set, each at its own frame count. gsc needs mirror clips and they
     # were routinely forgotten when this was a separate opt-in run.
@@ -293,7 +344,9 @@ def main() -> int:
     print(f"[echo-mind] {len(samples)} sample(s) total, entrypoint {entry}")
 
     work = Path(tempfile.mkdtemp(prefix="echo_mind_"))
+    pending: list[dict] = []
     done = skipped = 0
+
     for s in samples:
         out_path = args.test_root / args.model_name / s["perspective"] / s["test_type"] / s["gt_name"] / "video.mp4"
         if out_path.exists():
@@ -303,10 +356,10 @@ def main() -> int:
         num_frames = s["num_frames"]
         mind = json.load(open(s["action"], encoding="utf-8"))["data"]
         action_str = mind_to_action_string(mind, num_frames)
+        tag = f"{s['perspective']}/{s['test_type']}/{s['gt_name']}"
 
         if args.dry_run:
-            print(f"[echo-mind] {s['perspective']}/{s['test_type']}/{s['gt_name']} "
-                  f"({num_frames}f): {action_str}")
+            print(f"[echo-mind] {tag} ({num_frames}f): {action_str}")
             done += 1
             continue
 
@@ -317,15 +370,36 @@ def main() -> int:
         elif not first_frame(s["video"], png):
             continue
 
-        print(f"[echo-mind] {s['perspective']}/{s['test_type']}/{s['gt_name']} -> {out_path}")
-        rc = run_one(png, action_str, out_path, args, num_frames)
-        if rc != 0:
-            print(f"[echo-mind] sample failed (rc={rc}): {s['gt_name']}")
-            continue
-        done += 1
+        pending.append({"id": len(pending), "tag": tag, "image": str(png),
+                        "prompt": args.scene_prompt, "action_str": action_str,
+                        "target_path": str(out_path), "num_frames": num_frames,
+                        "fps": args.fps, "steps": args.steps, "seed": args.seed,
+                        "no_audio": not args.audio})
 
-    verb = "planned" if args.dry_run else "generated"
-    print(f"[echo-mind] done: {done} {verb}, {skipped} already existed")
+    if args.dry_run:
+        print(f"[echo-mind] done: {done} planned, {skipped} already existed")
+        return 0
+
+    if not pending:
+        print(f"[echo-mind] nothing to do: {skipped} already existed")
+        return 0
+
+    if args.worker and not args.causal:
+        # One checkpoint load for the whole batch. The causal entrypoint has a
+        # different call signature (explicit --timesteps rather than --steps),
+        # so it still goes per-sample.
+        done = run_worker(pending, work, args)
+    else:
+        for req in pending:
+            print(f"[echo-mind] {req['tag']} -> {req['target_path']}")
+            rc = run_one(Path(req["image"]), req["action_str"], Path(req["target_path"]),
+                         args, req["num_frames"])
+            if rc != 0:
+                print(f"[echo-mind] sample failed (rc={rc}): {req['tag']}")
+                continue
+            done += 1
+
+    print(f"[echo-mind] done: {done} generated, {skipped} already existed")
     return 0
 
 
