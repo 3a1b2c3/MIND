@@ -61,6 +61,16 @@ TEST_SUBDIR="${1:-}"
 METRICS="${2:-}"
 NUM_GPUS="${3:-}"
 PERSON="${4:-}"
+# Anything after the four positionals is forwarded to process.py untouched, so
+# its own flags are reachable through this wrapper. --resume none is the one
+# that matters in practice: 'auto' silently picks up the most recent
+# result_<name>_*.json and skips every sample already in it, so re-scoring to
+# add a metric reports "0 to score" and changes nothing.
+EXTRA_ARGS=()
+if [ "$#" -gt 4 ]; then
+    shift 4
+    EXTRA_ARGS=("$@")
+fi
 
 if [ -z "$TEST_SUBDIR" ]; then TEST_SUBDIR="matrix-game-3"; fi
 if [ -z "$METRICS" ]; then METRICS="lcm,visual,dino,action,gsc"; fi
@@ -122,9 +132,9 @@ echo "============================================================"
 # log file. Same wrapper that drive_*.sh use for generation logs.
 set +e
 if [ -n "$PERSPECTIVES" ]; then
-    "$PY" "$HERE/run_dreamx.py" "$LOG" "$PY" "src/process.py" "--gt_root" "$GT_ROOT" "--test_root" "$TEST_ROOT" "--metrics" "$METRICS" "--num_gpus" "$NUM_GPUS" "--perspectives" "$PERSPECTIVES"
+    "$PY" "$HERE/run_dreamx.py" "$LOG" "$PY" "src/process.py" "--gt_root" "$GT_ROOT" "--test_root" "$TEST_ROOT" "--metrics" "$METRICS" "--num_gpus" "$NUM_GPUS" "--perspectives" "$PERSPECTIVES" "${EXTRA_ARGS[@]}"
 else
-    "$PY" "$HERE/run_dreamx.py" "$LOG" "$PY" "src/process.py" "--gt_root" "$GT_ROOT" "--test_root" "$TEST_ROOT" "--metrics" "$METRICS" "--num_gpus" "$NUM_GPUS"
+    "$PY" "$HERE/run_dreamx.py" "$LOG" "$PY" "src/process.py" "--gt_root" "$GT_ROOT" "--test_root" "$TEST_ROOT" "--metrics" "$METRICS" "--num_gpus" "$NUM_GPUS" "${EXTRA_ARGS[@]}"
 fi
 EXIT_CODE=$?
 set -e
