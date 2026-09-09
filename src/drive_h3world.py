@@ -124,7 +124,8 @@ def gather(gt_root: Path, perspectives) -> list[dict]:
     return out
 
 
-def run_one(png: Path, action_npy: Path, out_path: Path, args: argparse.Namespace) -> int:
+def run_one(png: Path, action_npy: Path, out_path: Path, args: argparse.Namespace,
+            num_frames: int) -> int:
     out_path.parent.mkdir(parents=True, exist_ok=True)
     cmd = [
         str(H3_PY), str(INFER),
@@ -132,7 +133,7 @@ def run_one(png: Path, action_npy: Path, out_path: Path, args: argparse.Namespac
         "--first-frame", str(png),
         "--scene-prompt", args.scene_prompt,
         "--action-file", str(action_npy),
-        "--num-frames", str(args.num_frames),
+        "--num-frames", str(num_frames),
         "--steps", str(args.steps),
         "--seed", str(args.seed),
         "--cfg-scale", str(args.cfg_scale),
@@ -159,12 +160,14 @@ def main() -> int:
     ap.add_argument("--cfg-scale", type=float, default=1.0)
     ap.add_argument("--start-index", type=int, default=0)
     ap.add_argument("--limit", type=int, default=None)
-    # On by default: the mirror_test is the comparable-across-models measure
-    # (gsc splits the clip in half and time-flips the return leg against the
-    # outbound one), so it is the run worth getting by default. --no-mirror-test
-    # selects the action_space_test / mem_test sets instead.
+    # Additive and on by default: one invocation stages the main sets AND the
+    # mirror set, each at its own frame count. This flag used to be exclusive
+    # AND default-on, which meant a plain run generated only mirror clips and
+    # silently skipped action_space_test / mem_test entirely.
     ap.add_argument("--mirror-test", action=argparse.BooleanOptionalAction, default=True,
-                     help="run the mirror_test (go-then-return); default on")
+                     help="also stage the mirror_test (go-then-return) set; default on")
+    ap.add_argument("--mirror-only", action="store_true",
+                     help="stage ONLY the mirror set, skipping action_space/mem")
     ap.add_argument("--mirror-action", default=MIRROR_DEFAULT_ACTION, choices=MIRROR_ACTIONS,
                      help="mirror trajectory (default 'w')")
     args = ap.parse_args()
@@ -180,19 +183,32 @@ def main() -> int:
         raise SystemExit(f"H3-World checkpoint not found: {args.checkpoint} -- run download_models.sh first")
 
     perspectives = (args.perspective,) if args.perspective else PERSPECTIVES
-    if args.mirror_test:
-        samples = [s for s in gather_mirror_samples(args.gt_root, args.mirror_action)
-                   if not args.perspective or s["perspective"] == args.perspective]
-        print(f"[h3world-mind] MIRROR action='{args.mirror_action}': {len(samples)} samples")
-        # Fit the clip to the trajectory so gsc's midpoint split lands on the
-        # turnaround. 48 ticks -> 56 frames (17*3+5), split at 28.
-        if samples and not explicit_frames:
-            ticks = len(json.load(open(samples[0]["action"], encoding="utf-8"))["data"])
-            args.num_frames = snap_mirror_frames(ticks)
-            print(f"[h3world-mind] mirror trajectory is {ticks} ticks -> --num-frames "
-                  f"{args.num_frames} (split at {args.num_frames // 2}; override with --num-frames)")
-    else:
-        samples = gather(args.gt_root, perspectives)
+
+    # Each pass carries its own frame count: the main sets use --num-frames,
+    # the mirror set is fitted to its trajectory so gsc's midpoint split lands
+    # on the turnaround. That difference is why these used to be separate runs.
+    samples: list[dict] = []
+    if not args.mirror_only:
+        for s in gather(args.gt_root, perspectives):
+            s["num_frames"] = args.num_frames
+            s["resample"] = False
+            samples.append(s)
+        print(f"[h3world-mind] main: {len(samples)} samples @ {args.num_frames} frames")
+
+    if args.mirror_test or args.mirror_only:
+        mirror = [s for s in gather_mirror_samples(args.gt_root, args.mirror_action)
+                  if not args.perspective or s["perspective"] == args.perspective]
+        mirror_frames = args.num_frames
+        if mirror and not explicit_frames:
+            ticks = len(json.load(open(mirror[0]["action"], encoding="utf-8"))["data"])
+            mirror_frames = snap_mirror_frames(ticks)
+        for s in mirror:
+            s["num_frames"] = mirror_frames
+            s["resample"] = True
+        samples.extend(mirror)
+        print(f"[h3world-mind] mirror action='{args.mirror_action}': {len(mirror)} samples "
+              f"@ {mirror_frames} frames (split at {mirror_frames // 2})")
+
     samples = samples[args.start_index:]
     if args.limit:
         samples = samples[:args.limit]
@@ -212,12 +228,12 @@ def main() -> int:
         elif not first_frame(s["video"], png):
             continue
         mind = json.load(open(s["action"], encoding="utf-8"))["data"]
-        mat = mind_to_action_matrix(mind, args.num_frames, resample=args.mirror_test)
+        mat = mind_to_action_matrix(mind, s["num_frames"], resample=s["resample"])
         action_npy = work / f"{s['perspective']}_{s['test_type']}_{s['gt_name']}_action.npy"
         np.save(action_npy, mat)
 
         print(f"[h3world-mind] {s['perspective']}/{s['test_type']}/{s['gt_name']} -> {out_path}")
-        rc = run_one(png, action_npy, out_path, args)
+        rc = run_one(png, action_npy, out_path, args, s["num_frames"])
         if rc != 0:
             print(f"[h3world-mind] sample failed (rc={rc}): {s['gt_name']}")
             continue

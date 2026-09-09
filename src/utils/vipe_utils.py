@@ -9,30 +9,60 @@ import subprocess
 
 
 def _resolve_vipe_cli() -> str:
-    """Locate the ViPE CLI. Prefer PATH; fall back to known checkout locations.
-    ViPE is now installed editable into the MIND venv (built against torch 2.10
+    """Locate the ViPE CLI. Prefer the running interpreter's own venv, then
+    known checkout locations, and only fall back to PATH.
+
+    ViPE is installed editable into the MIND venv (built against torch 2.10
     + cu128 + sm_120 — see build_vipe.bat). The DeepVerse copy is kept as a
     fallback in case MIND's build is missing / broken.
+
+    PATH used to be checked FIRST. On Linux that is actively wrong: moreutils
+    ships an unrelated `/usr/bin/vipe` ("edit pipe in editor") which accepts
+    none of ViPE's flags, so every sample died with
+
+        Unknown option: output / Unknown option: pipeline
+        Usage: /usr/bin/vipe [--suffix=extension]
+
+    The action metric catches that per-sample and continues, so the run
+    completed and simply reported no `action` at all — 136 of 137 samples
+    skipped in one zing run. It only worked when the MIND venv happened to be
+    activated, which put the right `vipe` earlier on PATH; running the same
+    command from a non-activated shell (e.g. under tmux) silently lost the
+    metric.
+
+    The venv `bin/` (or `Scripts/`) beside `sys.executable` is the ViPE that
+    belongs to this interpreter, so resolve that first and platform-agnostically
+    — the old fallbacks were all Windows `Scripts/vipe.exe` paths and could
+    never match on Linux.
 
     Function-scope imports guard against multiprocessing-spawn issues where a
     worker re-imports a stale or partial vipe_utils module: even if module-level
     state is weird, `os` and `shutil` are imported fresh here every call."""
     import os as _os
     import shutil as _shutil
-    found = _shutil.which("vipe")
-    if found:
-        return found
+    import sys as _sys
+
+    _bindir = Path(_sys.executable).parent
     _siblings = Path(__file__).resolve().parent.parent.parent.parent
     candidates = [
-        # MIND venv (preferred): torch 2.10 has sm_120 SASS so UniDepth's
-        # F.linear / camera_layer no longer fails on RTX 5090.
-        str(_siblings / "MIND" / ".venv" / "Scripts" / "vipe.exe"),
+        # This interpreter's own venv -- the ViPE built against the torch that
+        # is already loaded in-process.
+        _bindir / "vipe",
+        _bindir / "vipe.exe",
+        # MIND venv: torch 2.10 has sm_120 SASS so UniDepth's F.linear /
+        # camera_layer no longer fails on RTX 5090.
+        _siblings / "MIND" / ".venv" / "bin" / "vipe",
+        _siblings / "MIND" / ".venv" / "Scripts" / "vipe.exe",
         # DeepVerse venv (fallback): torch 2.7, action metric fails on sm_120.
-        str(_siblings / "DeepVerse" / ".venv" / "Scripts" / "vipe.exe"),
+        _siblings / "DeepVerse" / ".venv" / "bin" / "vipe",
+        _siblings / "DeepVerse" / ".venv" / "Scripts" / "vipe.exe",
     ]
     for c in candidates:
         if _os.path.exists(c):
-            return c
+            return str(c)
+    found = _shutil.which("vipe")
+    if found:
+        return found
     return "vipe"  # let subprocess surface the original error
 
 

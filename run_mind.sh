@@ -50,6 +50,13 @@ fi
 export PATH
 
 PY="$HERE/.venv/bin/python"
+# Put the venv's bin FIRST on PATH. The action metric shells out to the `vipe`
+# CLI by name, and moreutils ships an unrelated /usr/bin/vipe ("edit pipe in
+# editor") that rejects every ViPE flag. Because action catches per-sample, the
+# run then completes with no action metric rather than failing -- so this is
+# silent unless you grep the log for "skip action". vipe_utils resolves the venv
+# copy directly now; this keeps PATH honest for anything else that shells out.
+export PATH="$HERE/.venv/bin:$PATH"
 # Sibling dirs at the same level as MIND itself (mirrors the Windows layout
 # C:\workspace\world\{MIND,MIND-Data,MIND-tests}). UNVERIFIED on this box --
 # adjust if MIND-Data / MIND-tests actually live elsewhere here.

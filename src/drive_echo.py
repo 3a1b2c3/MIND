@@ -168,7 +168,8 @@ def gather(gt_root: Path, perspectives) -> list[dict]:
     return out
 
 
-def run_one(png: Path, action_str: str, out_path: Path, args: argparse.Namespace) -> int:
+def run_one(png: Path, action_str: str, out_path: Path, args: argparse.Namespace,
+            num_frames: int) -> int:
     out_path.parent.mkdir(parents=True, exist_ok=True)
     entry = "inference_wm_causal.py" if args.causal else "inference_wm.py"
     cmd = [
@@ -178,7 +179,7 @@ def run_one(png: Path, action_str: str, out_path: Path, args: argparse.Namespace
         "--action-str", action_str,
         "--checkpoint", str(args.checkpoint),
         "--gemma-path", str(args.gemma_path),
-        "--num-frames", str(args.num_frames),
+        "--num-frames", str(num_frames),
         "--fps", str(args.fps),
         "--seed", str(args.seed),
         "--output", str(out_path),
@@ -233,10 +234,13 @@ def main() -> int:
     ap.add_argument("--limit", type=int, default=None)
     ap.add_argument("--dry-run", action="store_true",
                     help="print the action string per sample and exit without loading the model")
-    # Additive, unlike drive_h3world.py's exclusive flag: --mirror-test here
-    # selects the mirror set INSTEAD of the main sets, and is opt-in.
-    ap.add_argument("--mirror-test", action="store_true",
-                    help="run the mirror_test (go-then-return) set instead of action_space/mem")
+    # Additive and on by default: one invocation stages the main sets AND the
+    # mirror set, each at its own frame count. gsc needs mirror clips and they
+    # were routinely forgotten when this was a separate opt-in run.
+    ap.add_argument("--mirror-test", action=argparse.BooleanOptionalAction, default=True,
+                    help="also stage the mirror_test (go-then-return) set; default on")
+    ap.add_argument("--mirror-only", action="store_true",
+                    help="stage ONLY the mirror set, skipping action_space/mem")
     ap.add_argument("--mirror-action", default=MIRROR_DEFAULT_ACTION, choices=MIRROR_ACTIONS,
                     help="mirror trajectory (default 'w')")
     args = ap.parse_args()
@@ -257,29 +261,36 @@ def main() -> int:
             raise SystemExit(f"Gemma text encoder not found: {args.gemma_path} -- run echo_wm/download_models.sh")
 
     perspectives = (args.perspective,) if args.perspective else PERSPECTIVES
-    if args.mirror_test:
-        samples = [s for s in gather_mirror_samples(args.gt_root, args.mirror_action)
-                   if not args.perspective or s["perspective"] == args.perspective]
-        print(f"[echo-mind] MIRROR action='{args.mirror_action}': {len(samples)} samples")
-        # The mirror trajectories are short (-w.json is 48 ticks, 24 out / 24
-        # back) and gsc scores by splitting the clip at its midpoint, which is
-        # only the turnaround if the clip ends when the trajectory does.
-        # Generating the default 97 frames would put the turnaround a quarter
-        # of the way in and pad the rest with idle. Fit the clip to the
-        # trajectory unless --num-frames was given explicitly.
-        if samples and not explicit_frames:
-            ticks = len(json.load(open(samples[0]["action"], encoding="utf-8"))["data"])
-            args.num_frames = snap_frames(ticks)
-            print(f"[echo-mind] mirror trajectory is {ticks} ticks -> --num-frames {args.num_frames} "
-                  f"(override with --num-frames)")
-    else:
-        samples = gather(args.gt_root, perspectives)
+
+    # Each pass carries its own frame count: the main sets use --num-frames,
+    # the mirror set is fitted to its trajectory so gsc's midpoint split lands
+    # on the turnaround. That difference is why these used to be separate runs.
+    samples: list[dict] = []
+    if not args.mirror_only:
+        for s in gather(args.gt_root, perspectives):
+            s["num_frames"] = args.num_frames
+            samples.append(s)
+        print(f"[echo-mind] main: {len(samples)} samples @ {args.num_frames} frames")
+
+    if args.mirror_test or args.mirror_only:
+        mirror = [s for s in gather_mirror_samples(args.gt_root, args.mirror_action)
+                  if not args.perspective or s["perspective"] == args.perspective]
+        mirror_frames = args.num_frames
+        if mirror and not explicit_frames:
+            ticks = len(json.load(open(mirror[0]["action"], encoding="utf-8"))["data"])
+            mirror_frames = snap_frames(ticks)
+        for s in mirror:
+            s["num_frames"] = mirror_frames
+        samples.extend(mirror)
+        print(f"[echo-mind] mirror action='{args.mirror_action}': {len(mirror)} samples "
+              f"@ {mirror_frames} frames (split at {mirror_frames // 2})")
+
     samples = samples[args.start_index:]
     if args.limit:
         samples = samples[:args.limit]
 
     entry = "inference_wm_causal.py" if args.causal else "inference_wm.py"
-    print(f"[echo-mind] {len(samples)} sample(s), {args.num_frames} frames, entrypoint {entry}")
+    print(f"[echo-mind] {len(samples)} sample(s) total, entrypoint {entry}")
 
     work = Path(tempfile.mkdtemp(prefix="echo_mind_"))
     done = skipped = 0
@@ -289,11 +300,13 @@ def main() -> int:
             skipped += 1
             continue
 
+        num_frames = s["num_frames"]
         mind = json.load(open(s["action"], encoding="utf-8"))["data"]
-        action_str = mind_to_action_string(mind, args.num_frames)
+        action_str = mind_to_action_string(mind, num_frames)
 
         if args.dry_run:
-            print(f"[echo-mind] {s['perspective']}/{s['test_type']}/{s['gt_name']}: {action_str}")
+            print(f"[echo-mind] {s['perspective']}/{s['test_type']}/{s['gt_name']} "
+                  f"({num_frames}f): {action_str}")
             done += 1
             continue
 
@@ -305,7 +318,7 @@ def main() -> int:
             continue
 
         print(f"[echo-mind] {s['perspective']}/{s['test_type']}/{s['gt_name']} -> {out_path}")
-        rc = run_one(png, action_str, out_path, args)
+        rc = run_one(png, action_str, out_path, args, num_frames)
         if rc != 0:
             print(f"[echo-mind] sample failed (rc={rc}): {s['gt_name']}")
             continue
