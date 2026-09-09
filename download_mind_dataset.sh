@@ -1,8 +1,11 @@
 #!/bin/bash
 # Download the MIND benchmark GT dataset (first-person + third-person) from HF
 # (CSU-JPG/MIND) via the venv's huggingface_hub (no hf CLI needed). Lands under
-# mind_data/, which process.py reads as gt_root:
-#   mind_data/{perspective}/test/{test_type}/...
+# ../MIND-Data/, a sibling of this repository, which is what run_mind.sh sets
+# as gt_root and what the drive_* scripts resolve:
+#   ../MIND-Data/{perspective}/test/{test_type}/...
+# This previously landed in ./mind_data, which nothing reads -- running both
+# this and `src/download_models.py --dataset` produced two 35 GB copies.
 # HF_TOKEN read from env if gated. Skips already-downloaded files (resumable).
 #
 #   bash download_mind_dataset.sh                 full dataset (both perspectives)
@@ -11,7 +14,7 @@ set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PY="$HERE/.venv/bin/python"
-DEST="$HERE/mind_data"
+DEST="$(realpath -m "$HERE/../MIND-Data")"
 SUB="${1:-}"
 
 if [ ! -x "$PY" ]; then
