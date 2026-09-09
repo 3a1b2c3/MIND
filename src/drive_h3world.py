@@ -50,11 +50,31 @@ KEY_COLS = ["W", "A", "S", "D", "Q", "E", "I", "J", "K", "L", "Space"]
 ACTION_DIM = len(KEY_COLS) + 3 + 3
 
 
-def mind_to_action_matrix(mind_data: list, num_frames: int = NUM_FRAMES) -> np.ndarray:
+def snap_mirror_frames(n_ticks: int) -> int:
+    """Smallest valid 17k+5 frame count >= n_ticks."""
+    return 5 + 17 * max(1, -(-(n_ticks - 5) // 17))
+
+
+def mind_to_action_matrix(mind_data: list, num_frames: int = NUM_FRAMES,
+                          resample: bool = False) -> np.ndarray:
+    """MIND ticks -> H3-World's per-frame action matrix.
+
+    Default (main tests): take the first num_frames ticks. Their action.json
+    carries thousands of ticks against a ~124-frame clip, so this consumes the
+    opening slice and never pads -- unchanged behaviour, so existing scores stay
+    comparable.
+
+    resample=True (mirror test): stretch the whole trajectory proportionally
+    across num_frames. The mirror set is 48 ticks of 24-out/24-back and gsc
+    splits the generated clip at its midpoint, so the turnaround has to land
+    there. H3-World only accepts 17k+5 frame counts, so 48 ticks cannot map
+    1:1 -- the nearest valid length is 56. Resampling puts tick 24 at frame 28
+    = 56/2 exactly; truncating or holding the last tick does not.
+    """
     mat = np.zeros((num_frames, ACTION_DIM), dtype=np.float32)
-    n = min(len(mind_data), num_frames)
+    n = num_frames if resample else min(len(mind_data), num_frames)
     for i in range(n):
-        s = mind_data[i]
+        s = mind_data[i * len(mind_data) // num_frames] if resample else mind_data[i]
         if s.get("ws") == 1:
             mat[i, KEY_COLS.index("W")] = 1
         elif s.get("ws") == 2:
@@ -71,8 +91,10 @@ def mind_to_action_matrix(mind_data: list, num_frames: int = NUM_FRAMES) -> np.n
             mat[i, KEY_COLS.index("J")] = 1
         elif s.get("lr") == 2:
             mat[i, KEY_COLS.index("L")] = 1
-    if n < num_frames and n > 0:
-        mat[n:] = mat[n - 1]  # hold last tick for any padding
+    # Any remaining frames stay zero (idle). Holding the last tick here is what
+    # produced the broken mirror clips: 48 ticks held to 124 frames ran the
+    # return leg for 100 frames instead of 24, so the camera ended far past its
+    # start and gsc scored an overshoot rather than a return.
     return mat
 
 
@@ -129,7 +151,9 @@ def main() -> int:
     ap.add_argument("--checkpoint", type=Path, default=CHECKPOINT)
     ap.add_argument("--scene-prompt", default=GENERIC_SCENE_PROMPT,
                      help="MIND has no per-sample caption; one generic scene prompt is used for all samples")
-    ap.add_argument("--num-frames", type=int, default=NUM_FRAMES, help="must be 17k+5 (124, 243, 481, ...)")
+    ap.add_argument("--num-frames", type=int, default=None,
+                     help=f"must be 17k+5 (124, 243, 481, ...); default {NUM_FRAMES}, or snapped to "
+                          "the trajectory length under --mirror-test")
     ap.add_argument("--steps", type=int, default=50)
     ap.add_argument("--seed", type=int, default=2)
     ap.add_argument("--cfg-scale", type=float, default=1.0)
@@ -145,8 +169,11 @@ def main() -> int:
                      help="mirror trajectory (default 'w')")
     args = ap.parse_args()
 
-    if (args.num_frames - 5) % 17:
+    explicit_frames = args.num_frames is not None
+    if explicit_frames and (args.num_frames - 5) % 17:
         ap.error(f"--num-frames must be 17k+5 (124, 243, 481, ...), got {args.num_frames}")
+    if not explicit_frames:
+        args.num_frames = NUM_FRAMES
     if not H3_PY.exists():
         raise SystemExit(f"H3-World venv not found: {H3_PY} -- see H3-World/README.md Setup")
     if not args.checkpoint.exists():
@@ -157,6 +184,13 @@ def main() -> int:
         samples = [s for s in gather_mirror_samples(args.gt_root, args.mirror_action)
                    if not args.perspective or s["perspective"] == args.perspective]
         print(f"[h3world-mind] MIRROR action='{args.mirror_action}': {len(samples)} samples")
+        # Fit the clip to the trajectory so gsc's midpoint split lands on the
+        # turnaround. 48 ticks -> 56 frames (17*3+5), split at 28.
+        if samples and not explicit_frames:
+            ticks = len(json.load(open(samples[0]["action"], encoding="utf-8"))["data"])
+            args.num_frames = snap_mirror_frames(ticks)
+            print(f"[h3world-mind] mirror trajectory is {ticks} ticks -> --num-frames "
+                  f"{args.num_frames} (split at {args.num_frames // 2}; override with --num-frames)")
     else:
         samples = gather(args.gt_root, perspectives)
     samples = samples[args.start_index:]
@@ -178,7 +212,7 @@ def main() -> int:
         elif not first_frame(s["video"], png):
             continue
         mind = json.load(open(s["action"], encoding="utf-8"))["data"]
-        mat = mind_to_action_matrix(mind, args.num_frames)
+        mat = mind_to_action_matrix(mind, args.num_frames, resample=args.mirror_test)
         action_npy = work / f"{s['perspective']}_{s['test_type']}_{s['gt_name']}_action.npy"
         np.save(action_npy, mat)
 
