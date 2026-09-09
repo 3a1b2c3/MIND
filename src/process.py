@@ -48,6 +48,33 @@ def compute_metrics_single_gpu(task_queue, result_list, gt_root, test_root, dino
     在单个GPU上从任务队列获取并处理任务
     """
     # 初始化模型
+    def _annotate_gsc(gsc, imgs, source):
+        """Tag a gsc result with where it came from and whether the clip moved.
+
+        Two separate problems this makes visible in the result file:
+
+        1. gsc is computed by two different code paths -- a real mirror_test
+           go-then-return, and an ordinary action_space/mem clip split and
+           time-flipped. On footage that never returns anywhere the second is
+           first-half/second-half self-similarity, not spatial memory. Both used
+           to land in one 'gsc' key with nothing to tell them apart, so rows
+           measuring different things got ranked against each other.
+
+        2. A static clip scores PERFECTLY. If the model barely moves, the two
+           halves are near-identical and gsc reports ~0 error -- matrix-game-3's
+           mirror clips came back at avg_mse 0.0015 with SSIM 0.991-0.993 and one
+           sample at infinite PSNR, 20x "better" than anything else purely by not
+           moving. 'motion_mse' is the error between the first frame and the
+           midpoint frame: how far the clip actually travelled outbound. When it
+           is near zero the gsc score is meaningless and should be dropped, not
+           ranked first.
+        """
+        gsc['source'] = source
+        if imgs is not None and len(imgs) >= 2:
+            mid = len(imgs) // 2
+            gsc['motion_mse'] = float(torch.mean((imgs[0] - imgs[mid]) ** 2))
+        return gsc
+
     if 'lcm' in requested_metrics or 'gsc' in requested_metrics:
         tqdm.write(f"GPU[{gpu_id}]: loading lcm model")
         lpips_metric = lpips.LPIPS(net='alex', spatial=False).to(device)
@@ -129,7 +156,7 @@ def compute_metrics_single_gpu(task_queue, result_list, gt_root, test_root, dino
                         
                         tqdm.write(f"{prefix}: [2/2] Computing GSC metrics (MSE/PSNR/SSIM/LPIPS)...")
                         gsc = lcm_metric(origin_pred, mirror_pred, lpips_metric, ssim_metric, psnr_metric, process_batch_size, device)
-                        vid_result['gsc'] = gsc
+                        vid_result['gsc'] = _annotate_gsc(gsc, imgs, 'mirror')
                         result['video_results'].append(vid_result)
 
                         del sample_reader                                                                                                                                                                  
@@ -229,8 +256,13 @@ def compute_metrics_single_gpu(task_queue, result_list, gt_root, test_root, dino
                                 origin_pred = imgs[:gsc_frames // 2]
                                 mirror_pred = torch.flip(imgs[gsc_frames // 2:], dims=[0])
                                 gsc = lcm_metric(origin_pred, mirror_pred, lpips_metric, ssim_metric, psnr_metric, process_batch_size, device)
-                                result['gsc'] = gsc
-                                tqdm.write(f"{prefix}: GSC computed successfully")
+                                # 'self', not 'mirror': this clip is an ordinary
+                                # action_space/mem rollout that never returns to
+                                # its start, so the midpoint split measures
+                                # self-similarity rather than spatial memory.
+                                result['gsc'] = _annotate_gsc(gsc, imgs, 'self')
+                                tqdm.write(f"{prefix}: GSC computed successfully "
+                                           f"(source=self, motion_mse={gsc.get('motion_mse', float('nan')):.4f})")
 
                             del sample_reader
                             torch.cuda.empty_cache()
