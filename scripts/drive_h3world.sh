@@ -16,6 +16,11 @@
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# These scripts live in scripts/ but every path below is written relative to
+# the repository root -- .venv, src/, and the sibling MIND-Data / MIND-tests.
+# Resolve the root rather than assuming this file sits in it, so the script
+# works from either location.
+[ -d "$HERE/src" ] || HERE="$(cd "$HERE/.." && pwd)"
 cd "$HERE"
 
 H3_ROOT="$(realpath -m "${H3_ROOT:-$HERE/../H3-World}")"
