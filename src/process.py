@@ -418,11 +418,21 @@ def compute_metrics(gt_root, test_root, dino_path, output_path, requested_metric
         task_queue.put(Task(task, 0))
 
     # 进度监控线程
+    # result_list is pre-seeded with the resumed rows, so completion must be
+    # measured against resumed + new, not against the new tasks alone. Comparing
+    # len(result_list) to total_tasks meant that whenever resumed >= remaining
+    # (e.g. 155 resumed, 95 to score) the monitor declared victory on its first
+    # tick and set stop_event before any worker had started -- every worker then
+    # logged "Stop event received, exiting..." and the run "succeeded" having
+    # scored nothing.
+    expected_total = total_tasks + len(resumed_results)
+
     def monitor_progress():
-        pbar = tqdm(total=total_tasks, desc="Progress", unit="video")
-        last_count = 0
+        pbar = tqdm(total=expected_total, initial=len(resumed_results),
+                    desc="Progress", unit="video")
+        last_count = len(resumed_results)
         try:
-            while not stop_event.is_set() or len(result_list) < total_tasks:
+            while not stop_event.is_set() or len(result_list) < expected_total:
                 current_count = len(result_list)
                 if current_count > last_count:
                     pbar.update(current_count - last_count)
@@ -430,7 +440,7 @@ def compute_metrics(gt_root, test_root, dino_path, output_path, requested_metric
                     with open(output_path, 'w') as f:
                         result_dict['data'] = list(result_list)
                         json.dump(result_dict, f, indent=2)
-                if last_count >= total_tasks:
+                if last_count >= expected_total:
                     break
                 time.sleep(0.5)
             stop_event.set()
