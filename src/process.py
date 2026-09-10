@@ -307,14 +307,21 @@ def compute_metrics_single_gpu(task_queue, result_list, gt_root, test_root, dino
 def default_worker_count(num_gpus):
     """Scoring workers to use when --num_workers is not given.
 
-    Each concurrent video costs roughly two CPU cores and ~3.5GB of VRAM, almost
-    all of it in the ViPE subprocess. The old default of one worker per GPU left
-    a 72-core box at load average 2 and took 175s/video; eight workers took
-    12s/video for identical results. Sized off cores (the binding constraint,
-    not VRAM) and capped at 8, the largest value measured here.
+    A single video costs 123-659s inside ViPE regardless of worker count -- the
+    parallelism overlaps that cost, it does not reduce it. Each concurrent video
+    holds ~2 CPU cores and ~10.6GB of VRAM (measured: 16 workers = 170GB of a
+    256GB GB300), so VRAM, not cores, is what caps this on a big box.
+
+    One worker per GPU took 175s/video on 72 cores at load average 2; sixteen
+    took ~24s/video for identical results. Capped at 16 because 24 would exceed
+    the card.
+
+    NOTE: this is per-process and cannot see other scoring jobs. Two concurrent
+    runs both taking the default would ask for 2x the VRAM -- pass an explicit
+    --num_workers when deliberately running more than one model at a time.
     """
     cores = os.cpu_count() or 4
-    return max(num_gpus, min(cores // 8, 8))
+    return max(num_gpus, min(cores // 4, 16))
 
 def compute_metrics(gt_root, test_root, dino_path, output_path, requested_metrics=['lcm', 'visual', 'dino', 'action'],
                    video_max_time=100, process_batch_size=10, num_gpus=1, resume_path=None, limit=None,
@@ -474,10 +481,11 @@ if __name__ == '__main__':
                        help='dinov3 weight directory, for example ./dinov3_vitb16')
     parser.add_argument('--num_gpus', type=int, default=1, help='Number of GPUs to use (default: 1)')
     parser.add_argument('--num_workers', type=int, default=None,
-                       help='Number of scoring worker processes. Default: min(cores//8, 8), at least one '
+                       help='Number of scoring worker processes. Default: min(cores//4, 16), at least one '
                             'per GPU. Workers are assigned to devices round-robin, so this may exceed the '
-                            'GPU count. Each worker needs ~3.5GB VRAM and ~2 CPU cores; pass 1 to restore '
-                            'serial scoring.')
+                            'GPU count. Each worker needs ~10.6GB VRAM and ~2 CPU cores; pass 1 to '
+                            'restore serial scoring. Set explicitly when running two models at once -- '
+                            'the default is per-process and cannot see the other job.')
     parser.add_argument('--video_max_time', type=int, default=None, help='Maximum video frames (default: None = use all frames)')
     parser.add_argument('--output', type=str, default=None, help='Output JSON file path')
     parser.add_argument('--metrics', type=str, default='lcm,visual,dino,action,gsc', help='Requested metrics to compute, comma separated (e.g. dino,visual)')
