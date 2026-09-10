@@ -306,7 +306,7 @@ def compute_metrics_single_gpu(task_queue, result_list, gt_root, test_root, dino
 
 def compute_metrics(gt_root, test_root, dino_path, output_path, requested_metrics=['lcm', 'visual', 'dino', 'action'],
                    video_max_time=100, process_batch_size=10, num_gpus=1, resume_path=None, limit=None,
-                   perspectives=None):
+                   perspectives=None, num_workers=None):
     result_dict = {'data':[], 'video_max_time':video_max_time}
 
     # Load prior results (if --resume): seed result_dict and build skip-set so
@@ -378,7 +378,10 @@ def compute_metrics(gt_root, test_root, dino_path, output_path, requested_metric
 
     total_tasks = len(all_data)
     tqdm.write(f"\n{'='*60}")
-    tqdm.write(f"Total data: {total_tasks}, Using {num_gpus} GPU(s) with task queue")
+    # Worker count is independent of device count: ViPE uses ~2 cores and ~1GB
+    # of VRAM per video, so one worker per GPU leaves a large box nearly idle.
+    n_workers = num_workers if num_workers else num_gpus
+    tqdm.write(f"Total data: {total_tasks}, Using {num_gpus} GPU(s), {n_workers} worker(s) with task queue")
     tqdm.write(f"{'='*60}\n")
 
     ensure_all_models_downloaded()
@@ -420,11 +423,12 @@ def compute_metrics(gt_root, test_root, dino_path, output_path, requested_metric
     monitor_thread.start()
 
     try:
-        with mp.Pool(processes=num_gpus) as pool:
+        with mp.Pool(processes=n_workers) as pool:
             worker_args = [
                 (task_queue, result_list, gt_root, test_root, dino_path,
-                    requested_metrics, video_max_time, process_batch_size, f'cuda:{i}', i, stop_event)
-                for i in range(num_gpus)
+                    requested_metrics, video_max_time, process_batch_size,
+                    f'cuda:{i % num_gpus}', i % num_gpus, stop_event)
+                for i in range(n_workers)
             ]
 
             pool.starmap(compute_metrics_single_gpu, worker_args)
@@ -457,6 +461,10 @@ if __name__ == '__main__':
     parser.add_argument('--dino_path', type=str, default='./dinov3_vitb16',
                        help='dinov3 weight directory, for example ./dinov3_vitb16')
     parser.add_argument('--num_gpus', type=int, default=1, help='Number of GPUs to use (default: 1)')
+    parser.add_argument('--num_workers', type=int, default=None,
+                       help='Number of scoring worker processes (default: None = one per GPU). '
+                            'Workers are assigned to devices round-robin, so this may exceed the GPU count. '
+                            'Each worker needs ~3.5GB VRAM and ~2 CPU cores.')
     parser.add_argument('--video_max_time', type=int, default=None, help='Maximum video frames (default: None = use all frames)')
     parser.add_argument('--output', type=str, default=None, help='Output JSON file path')
     parser.add_argument('--metrics', type=str, default='lcm,visual,dino,action,gsc', help='Requested metrics to compute, comma separated (e.g. dino,visual)')
@@ -518,6 +526,7 @@ if __name__ == '__main__':
             requested_metrics=[m.strip() for m in args.metrics.split(',')],
             video_max_time=args.video_max_time,
             num_gpus=args.num_gpus,
+            num_workers=args.num_workers,
             resume_path=resume_path,
             limit=args.limit,
             perspectives=[p.strip() for p in args.perspectives.split(',')] if args.perspectives else None,
