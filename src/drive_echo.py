@@ -283,8 +283,15 @@ def main() -> int:
     # path reloads ~47.8 GB plus Gemma for every clip -- that dominated the wall
     # clock (25-30h for a full pass, most of it reloading identical weights).
     # _echo_worker.py builds the pipeline once and iterates.
-    ap.add_argument("--worker", action=argparse.BooleanOptionalAction, default=True,
-                    help="load the checkpoint once and batch all samples; default on")
+    #
+    # OFF by default: holding the pipeline resident across samples also holds
+    # every sample's intermediates, and it OOM'd at 249 GiB on a 249 GiB GB300
+    # where the per-sample path (fresh process per clip) completed. Until the
+    # worker frees between samples, correctness beats the reload saving --
+    # so this is opt-in rather than something to remember to switch off.
+    ap.add_argument("--worker", action=argparse.BooleanOptionalAction, default=False,
+                    help="load the checkpoint once and batch all samples; default OFF "
+                         "(it OOMs -- see comment). Saves ~25-30h of reloads when it fits.")
     # Additive and on by default: one invocation stages the main sets AND the
     # mirror set, each at its own frame count. gsc needs mirror clips and they
     # were routinely forgotten when this was a separate opt-in run.
